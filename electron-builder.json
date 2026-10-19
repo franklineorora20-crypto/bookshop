@@ -1,0 +1,29 @@
+{
+  "appId": "ke.co.kitabupos.desktop",
+  "productName": "KitabuPOS",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "KitabuPOS Bookshop System",
+    "uninstallDisplayName": "KitabuPOS Bookshop Management System",
+    "runAfterFinish": true
+  }
+}
