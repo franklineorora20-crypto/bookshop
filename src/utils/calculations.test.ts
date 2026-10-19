@@ -4,8 +4,6 @@ import {
   calculateLineTotal,
   calculateCartTotals,
   calculateChange,
-  calculateAvailableCredit,
-  canCustomerBorrow,
   calculateProfitability,
   isLowStock,
   isOutOfStock,
@@ -53,16 +51,9 @@ test('calculateChange returns correct change tendered', () => {
   assert.equal(calculateChange(1800, 1500), 0);
 });
 
-test('credit calculations check customer credit availability', () => {
-  assert.equal(calculateAvailableCredit(10000, 3500), 6500);
-  assert.equal(calculateAvailableCredit(5000, 5500), 0);
-
-  const check1 = canCustomerBorrow(10000, 3000, 5000);
-  assert.equal(check1.allowed, true);
-
-  const check2 = canCustomerBorrow(10000, 8000, 3000);
-  assert.equal(check2.allowed, false);
-  assert.match(check2.reason || '', /exceeds available credit/i);
+test('change calculation returns zero when amount tendered equals or is less than total', () => {
+  assert.equal(calculateChange(500, 500), 0);
+  assert.equal(calculateChange(500, 400), 0);
 });
 
 test('calculateProfitability computes gross and net profit margins', () => {

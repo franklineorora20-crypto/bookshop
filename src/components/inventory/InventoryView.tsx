@@ -126,42 +126,44 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Top Valuation Bar */}
+      {/* Top Valuation Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Titles</span>
-          <p className="text-xl font-bold text-slate-800 mt-1">{books.filter((b) => !b.is_archived).length} books</p>
-          <span className="text-xs text-slate-400">{formatNumber(totalUnits)} physical copies</span>
+        <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-xs">
+          <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">Total Titles</span>
+          <p className="text-xl font-bold tracking-tight text-neutral-900 mt-1 tabular-nums">
+            {books.filter((b) => !b.is_archived).length}
+          </p>
+          <span className="text-[11px] text-neutral-400 tabular-nums">{formatNumber(totalUnits)} physical units</span>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Inventory Cost Value</span>
-          <p className="text-xl font-bold text-slate-800 mt-1">{formatKES(totalCostValue)}</p>
-          <span className="text-xs text-slate-400">Total acquisition cost</span>
+        <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-xs">
+          <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">Inventory Cost</span>
+          <p className="text-xl font-bold tracking-tight text-neutral-900 mt-1 tabular-nums">{formatKES(totalCostValue)}</p>
+          <span className="text-[11px] text-neutral-400">Total acquisition value</span>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Retail Sales Value</span>
-          <p className="text-xl font-bold text-emerald-700 mt-1">{formatKES(totalRetailValue)}</p>
-          <span className="text-xs text-slate-400">Potential retail realization</span>
+        <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-xs">
+          <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">Retail Value</span>
+          <p className="text-xl font-bold tracking-tight text-neutral-900 mt-1 tabular-nums">{formatKES(totalRetailValue)}</p>
+          <span className="text-[11px] text-neutral-400">Potential retail revenue</span>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Potential Gross Margin</span>
-          <p className="text-xl font-bold text-teal-700 mt-1">{potentialMargin}%</p>
-          <span className="text-xs text-slate-400">Profit potential: {formatKES(totalRetailValue - totalCostValue)}</span>
+        <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-xs">
+          <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">Gross Margin</span>
+          <p className="text-xl font-bold tracking-tight text-neutral-900 mt-1 tabular-nums">{potentialMargin}%</p>
+          <span className="text-[11px] text-neutral-400">Spread: {formatKES(totalRetailValue - totalCostValue)}</span>
         </div>
       </div>
 
       {/* Action Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+      <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search Input */}
           <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
               placeholder="Search by Title, Author, ISBN, Barcode, Publisher..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 font-medium"
+              className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-neutral-200 focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
             />
           </div>
 
@@ -169,23 +171,23 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setHistoryBook({})}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-50 text-neutral-700 text-xs font-medium transition-colors tactile-btn"
             >
-              <History className="w-4 h-4 text-slate-500" />
-              <span>Full Movements Log</span>
+              <History className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Movements Log</span>
             </button>
             <button
               onClick={() => setIsCSVImportOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-50 text-neutral-700 text-xs font-medium transition-colors tactile-btn"
             >
-              <Upload className="w-4 h-4 text-emerald-600" />
+              <Upload className="w-3.5 h-3.5 text-neutral-400" />
               <span>Import CSV</span>
             </button>
             <button
               onClick={handleExportCSV}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-50 text-neutral-700 text-xs font-medium transition-colors tactile-btn"
             >
-              <Download className="w-4 h-4 text-blue-600" />
+              <Download className="w-3.5 h-3.5 text-neutral-400" />
               <span>Export CSV</span>
             </button>
             <button
@@ -193,31 +195,31 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                 setEditingBook(null);
                 setIsAddModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-medium shadow-xs transition-colors tactile-btn"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5" />
               <span>Add Book</span>
             </button>
           </div>
         </div>
 
-        {/* Filter Selectors */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
-          <span className="font-semibold text-slate-500">Filter By:</span>
-
+        {/* Filter Selectors & Segmented Control */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-neutral-100 text-xs">
+          <span className="text-neutral-500 text-xs">Category:</span>
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-medium text-slate-700 focus:outline-hidden"
+            className="px-2.5 py-1 rounded-lg border border-neutral-200 bg-white text-xs text-neutral-700 focus:outline-none focus:border-neutral-900"
           >
             {categories.map((c) => (
               <option key={c} value={c}>
-                Category: {c}
+                {c}
               </option>
             ))}
           </select>
 
-          <div className="flex rounded-lg border border-slate-300 overflow-hidden bg-slate-50 p-0.5">
+          {/* Segmented Stock Status Filter */}
+          <div className="flex rounded-lg bg-neutral-100 p-0.5 text-xs">
             {[
               { id: 'all', label: 'All Stock' },
               { id: 'in_stock', label: 'In Stock' },
@@ -227,10 +229,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setStockStatusFilter(tab.id as any)}
-                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold transition-colors ${
+                className={`px-2.5 py-1 rounded-md text-xs transition-all tactile-btn ${
                   stockStatusFilter === tab.id
-                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-neutral-900 font-medium shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
                 {tab.label}
@@ -238,31 +240,62 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
             ))}
           </div>
 
-          <span className="ml-auto text-slate-400 font-mono text-[11px]">
+          <span className="ml-auto text-neutral-400 font-mono text-[11px] tabular-nums">
             Showing {filteredBooks.length} of {books.length} titles
           </span>
         </div>
       </div>
 
       {/* Books Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+      <div className="bg-white rounded-xl border border-neutral-200/80 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
+            <thead className="bg-neutral-50/70 border-b border-neutral-100 text-neutral-500 font-medium">
               <tr>
-                <th className="py-3 px-4">Title & Details</th>
-                <th className="py-3 px-4">Author / Publisher</th>
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4 text-right">Cost (KES)</th>
-                <th className="py-3 px-4 text-right">Selling Price</th>
-                <th className="py-3 px-4 text-center">Stock</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+                <th className="py-2.5 px-4">Title & Details</th>
+                <th className="py-2.5 px-4">Author / Publisher</th>
+                <th className="py-2.5 px-4">Category</th>
+                <th className="py-2.5 px-4 text-right">Cost</th>
+                <th className="py-2.5 px-4 text-right">Price</th>
+                <th className="py-2.5 px-4 text-center">Stock</th>
+                <th className="py-2.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium">
-              {filteredBooks.length === 0 ? (
+            <tbody className="divide-y divide-neutral-100">
+              {books.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-16 text-center">
+                    <div className="flex flex-col items-center justify-center space-y-3">
+                      <div className="w-10 h-10 rounded-xl bg-neutral-50 border border-neutral-200/70 text-neutral-400 flex items-center justify-center">
+                        <Boxes className="w-5 h-5" />
+                      </div>
+                      <p className="text-neutral-900 font-semibold text-sm">No books added yet</p>
+                      <p className="text-neutral-400 text-xs max-w-sm">
+                        Enter your genuine titles manually with opening stock quantities, or import your catalog from CSV.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            setEditingBook(null);
+                            setIsAddModalOpen(true);
+                          }}
+                          className="px-3.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-xs transition-colors tactile-btn"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add First Book
+                        </button>
+                        <button
+                          onClick={() => setIsCSVImportOpen(true)}
+                          className="px-3.5 py-1.5 bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-700 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors tactile-btn"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-neutral-500" /> Import CSV
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredBooks.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-neutral-400">
                     No books found matching criteria.
                   </td>
                 </tr>
@@ -272,56 +305,54 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                   const isLow = book.quantity <= book.reorder_level && !isOut;
 
                   return (
-                    <tr key={book.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900 text-sm">{book.title}</div>
-                        <div className="text-[11px] text-slate-500 font-mono flex items-center gap-2 mt-0.5">
+                    <tr key={book.id} className="hover:bg-neutral-50/50 transition-colors">
+                      <td className="py-2.5 px-4">
+                        <div className="font-semibold text-neutral-900 text-xs">{book.title}</div>
+                        <div className="text-[11px] text-neutral-400 font-mono flex items-center gap-2 mt-0.5">
                           {book.isbn && <span>ISBN: {book.isbn}</span>}
                           {book.barcode && <span>Code: {book.barcode}</span>}
-                          {book.edition && <span className="text-slate-400 font-sans">({book.edition})</span>}
+                          {book.edition && <span>({book.edition})</span>}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-slate-700">
+                      <td className="py-2.5 px-4 text-neutral-600">
                         <div>{book.author}</div>
-                        <div className="text-[11px] text-slate-400">{book.publisher}</div>
+                        <div className="text-[11px] text-neutral-400">{book.publisher}</div>
                       </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px]">
-                          {book.category}
-                        </span>
+                      <td className="py-2.5 px-4 text-neutral-600">
+                        <span>{book.category}</span>
                       </td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-600">
+                      <td className="py-2.5 px-4 text-right font-mono text-neutral-600 tabular-nums">
                         {formatKES(book.purchase_price)}
                       </td>
-                      <td className="py-3 px-4 text-right font-bold font-mono text-slate-900">
+                      <td className="py-2.5 px-4 text-right font-semibold font-mono text-neutral-900 tabular-nums">
                         {formatKES(book.selling_price)}
                       </td>
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-2.5 px-4 text-center">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                          className={`font-mono text-xs tabular-nums ${
                             isOut
-                              ? 'bg-rose-100 text-rose-800'
+                              ? 'text-rose-600 font-semibold'
                               : isLow
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-emerald-100 text-emerald-800'
+                              ? 'text-amber-600 font-semibold'
+                              : 'text-neutral-800'
                           }`}
                         >
-                          {book.quantity} in stock
+                          {book.quantity}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="py-2.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => setAdjustingBook(book)}
-                            className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition-colors flex items-center gap-1"
+                            className="px-2 py-1 rounded border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 text-[11px] font-medium transition-colors flex items-center gap-1 tactile-btn"
                             title="Adjust in-store stock"
                           >
-                            <SlidersHorizontal className="w-3 h-3 text-slate-500" />
+                            <SlidersHorizontal className="w-3 h-3 text-neutral-400" />
                             <span>Stock</span>
                           </button>
                           <button
                             onClick={() => setHistoryBook({ id: book.id, title: book.title })}
-                            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                            className="p-1 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
                             title="View stock movement history"
                           >
                             <History className="w-3.5 h-3.5" />
@@ -331,14 +362,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                               setEditingBook(book);
                               setIsAddModalOpen(true);
                             }}
-                            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                            className="p-1 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
                             title="Edit book details"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleArchive(book)}
-                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-slate-100"
+                            className="p-1 rounded text-neutral-400 hover:text-rose-600 hover:bg-neutral-100 transition-colors"
                             title="Archive book"
                           >
                             <Archive className="w-3.5 h-3.5" />

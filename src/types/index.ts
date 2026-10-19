@@ -49,10 +49,10 @@ export interface StockMovement {
   created_at: string;
 }
 
-export type PaymentMethod = 'cash' | 'mpesa' | 'credit' | 'split' | 'card';
+export type PaymentMethod = 'cash' | 'mpesa' | 'split' | 'card';
 
 export interface SalePayment {
-  method: 'cash' | 'mpesa' | 'credit' | 'card';
+  method: 'cash' | 'mpesa' | 'card';
   amount: number;
   reference?: string; // e.g. M-Pesa transaction code
 }
@@ -86,7 +86,6 @@ export interface Sale {
   payment_method: PaymentMethod;
   payment_reference?: string; // M-Pesa code or split notes
   payments_json?: string; // JSON array of SalePayment
-  is_credit: number; // 1 or 0
   is_voided: number; // 1 or 0
   void_reason?: string;
   voided_by_user_id?: number;
@@ -132,28 +131,7 @@ export interface Purchase {
   items?: PurchaseItem[];
 }
 
-export interface Customer {
-  id: number;
-  name: string;
-  phone: string;
-  email?: string;
-  institution_type?: 'school' | 'teacher' | 'parent' | 'institution' | 'individual';
-  credit_limit: number;
-  current_balance: number; // amount customer owes
-  created_at: string;
-}
 
-export interface CreditPayment {
-  id: number;
-  customer_id: number;
-  customer_name?: string;
-  amount: number;
-  payment_method: 'cash' | 'mpesa' | 'bank';
-  reference_code?: string;
-  notes?: string;
-  user_id: number;
-  created_at: string;
-}
 
 export type ExpenseCategory =
   | 'Rent'

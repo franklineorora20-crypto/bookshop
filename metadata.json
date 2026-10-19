@@ -1,6 +1,6 @@
 {
   "name": "KitabuPOS - Offline Bookshop Management System",
-  "description": "Complete offline-first bookshop management, point-of-sale, inventory, customer credit, and financial reporting system for Kenyan bookshops.",
+  "description": "Complete offline-first bookshop management, point-of-sale, inventory, purchases, and financial reporting system for Kenyan bookshops.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

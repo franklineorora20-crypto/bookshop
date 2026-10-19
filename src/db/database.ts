@@ -1,7 +1,7 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import { SCHEMA_SQL } from './schema.ts';
 import { getSeedQueries } from './seed.ts';
-import { Book, Customer, Expense, Sale, SaleItem, ShopSettings, StockMovement, Supplier, User } from '../types/index.ts';
+import { Book, Expense, Sale, SaleItem, ShopSettings, StockMovement, Supplier, User } from '../types/index.ts';
 
 const DB_STORAGE_KEY = 'kitabupos_sqlite_db_v1';
 const BACKUP_TIMESTAMP_KEY = 'kitabupos_last_backup_time';
@@ -131,6 +131,8 @@ export async function getDatabase(): Promise<Database> {
           console.warn('Integrity check failed on stored DB, re-initializing fresh schema.');
           db = new SQL.Database();
           await initFreshDatabase(db);
+        } else {
+          await migrateDatabase(db);
         }
       } catch (err) {
         console.warn('Failed to load existing database, starting fresh:', err);
@@ -150,6 +152,46 @@ export async function getDatabase(): Promise<Database> {
   return initPromise;
 }
 
+async function migrateDatabase(db: Database): Promise<void> {
+  // Ensure schema_migrations table exists
+  db.run(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);`);
+  const versionsRes = db.exec('SELECT version FROM schema_migrations ORDER BY version ASC;');
+  const appliedVersions = (versionsRes[0]?.values || []).map((v) => Number(v[0]));
+  const now = new Date().toISOString();
+
+  if (!appliedVersions.includes(1)) {
+    db.run(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, '${now}');`);
+  }
+
+  if (!appliedVersions.includes(2)) {
+    // Migration 2: Remove customer credit dependencies safely and preserve existing genuine data
+    try {
+      const preMigBinary = db.export();
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('kitabupos_pre_migration_v2_backup', uint8ArrayToBase64(preMigBinary));
+      }
+    } catch (e) {
+      console.warn('Pre-migration backup warning:', e);
+    }
+
+    db.run('BEGIN TRANSACTION;');
+    try {
+      // Drop credit_payments table if exists
+      db.run('DROP TABLE IF EXISTS credit_payments;');
+      // Drop customers table if exists
+      db.run('DROP TABLE IF EXISTS customers;');
+
+      db.run(`INSERT INTO schema_migrations (version, applied_at) VALUES (2, '${now}');`);
+      db.run('COMMIT;');
+      await persistDbToStorage(db);
+    } catch (migErr) {
+      db.run('ROLLBACK;');
+      console.error('Migration v2 failed:', migErr);
+      throw migErr;
+    }
+  }
+}
+
 async function initFreshDatabase(db: Database): Promise<void> {
   db.run(SCHEMA_SQL);
   const seedQueries = await getSeedQueries();
@@ -160,6 +202,7 @@ async function initFreshDatabase(db: Database): Promise<void> {
       console.warn('Seed statement error (ignored if already existing):', e);
     }
   }
+  db.run(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (2, '${new Date().toISOString()}');`);
   await persistDbToStorage(db);
 }
 
@@ -297,7 +340,6 @@ export async function getDashboardMetrics(): Promise<{
   totalInventoryRetailValue: number;
   lowStockCount: number;
   outOfStockCount: number;
-  totalCustomerDebt: number;
   recentSales: Sale[];
 }> {
   const db = await getDatabase();
@@ -342,11 +384,6 @@ export async function getDashboardMetrics(): Promise<{
      WHERE is_archived = 0;`
   );
 
-  // Customer debt
-  const custDebtRes = await runQuery<{ debt: number }>(
-    `SELECT COALESCE(SUM(current_balance), 0) as debt FROM customers;`
-  );
-
   // Recent 6 transactions
   const recentSales = await runQuery<Sale>(
     `SELECT id, receipt_number, cashier_name, customer_name, grand_total, payment_method, is_voided, created_at
@@ -364,7 +401,6 @@ export async function getDashboardMetrics(): Promise<{
     totalInventoryRetailValue: Math.round((invRes[0]?.retailVal || 0) * 100) / 100,
     lowStockCount: invRes[0]?.lowStock || 0,
     outOfStockCount: invRes[0]?.outStock || 0,
-    totalCustomerDebt: Math.round((custDebtRes[0]?.debt || 0) * 100) / 100,
     recentSales,
   };
 }
@@ -582,11 +618,10 @@ export async function getStockMovements(bookId?: number): Promise<StockMovement[
   return runQuery<StockMovement>(sql, params);
 }
 
-// Point of Sale - Atomic Transaction
+// Point of Sale - Atomic Transaction (Cash, M-Pesa, Card, Split)
 export async function processSale(
   sale: {
     cashierName: string;
-    customerId?: number;
     customerName?: string;
     subtotal: number;
     discountTotal: number;
@@ -594,10 +629,9 @@ export async function processSale(
     grandTotal: number;
     totalPaid: number;
     changeAmount: number;
-    paymentMethod: 'cash' | 'mpesa' | 'credit' | 'split' | 'card';
+    paymentMethod: 'cash' | 'mpesa' | 'split' | 'card';
     paymentReference?: string;
     paymentsJson?: string;
-    isCredit: boolean;
   },
   items: Array<{
     bookId: number;
@@ -642,17 +676,16 @@ export async function processSale(
     // 3. Insert sale header
     db.run(
       `INSERT INTO sales (
-        id, receipt_number, user_id, cashier_name, customer_id, customer_name,
+        id, receipt_number, user_id, cashier_name, customer_name,
         subtotal, discount_total, tax_total, grand_total, total_paid, change_amount,
-        payment_method, payment_reference, payments_json, is_credit, is_voided, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);`,
+        payment_method, payment_reference, payments_json, is_voided, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);`,
       [
         nextSaleId,
         receiptNumber,
         userId,
         sale.cashierName,
-        sale.customerId || null,
-        sale.customerName || 'Walk-in Customer',
+        sale.customerName?.trim() || 'Walk-in Customer',
         sale.subtotal,
         sale.discountTotal,
         sale.taxTotal,
@@ -662,7 +695,6 @@ export async function processSale(
         sale.paymentMethod,
         sale.paymentReference || null,
         sale.paymentsJson || null,
-        sale.isCredit ? 1 : 0,
         now,
       ]
     );
@@ -715,14 +747,6 @@ export async function processSale(
       );
     }
 
-    // 5. If sale is credit, update customer outstanding balance
-    if (sale.isCredit && sale.customerId) {
-      db.run(
-        `UPDATE customers SET current_balance = current_balance + ? WHERE id = ?;`,
-        [sale.grandTotal, sale.customerId]
-      );
-    }
-
     db.run('COMMIT;');
     await persistDbToStorage(db);
 
@@ -742,7 +766,7 @@ export async function processSale(
   }
 }
 
-// Void Sale (Restores inventory, reverses customer credit, records audit)
+// Void Sale (Restores inventory and records audit)
 export async function voidSale(
   saleId: number,
   reason: string,
@@ -754,15 +778,13 @@ export async function voidSale(
 
   db.run('BEGIN TRANSACTION;');
   try {
-    const saleRes = db.exec(`SELECT receipt_number, is_voided, customer_id, grand_total, is_credit FROM sales WHERE id = ${saleId};`);
+    const saleRes = db.exec(`SELECT receipt_number, is_voided, grand_total FROM sales WHERE id = ${saleId};`);
     if (!saleRes[0] || saleRes[0].values.length === 0) {
       throw new Error('Sale not found');
     }
     const receiptNumber = saleRes[0].values[0][0] as string;
     const isVoided = Number(saleRes[0].values[0][1]);
-    const customerId = saleRes[0].values[0][2] ? Number(saleRes[0].values[0][2]) : null;
-    const grandTotal = Number(saleRes[0].values[0][3]);
-    const isCredit = Number(saleRes[0].values[0][4]);
+    const grandTotal = Number(saleRes[0].values[0][2]);
 
     if (isVoided === 1) {
       throw new Error(`Sale #${receiptNumber} is already voided.`);
@@ -804,15 +826,22 @@ export async function voidSale(
       }
     }
 
-    // If it was a credit sale, reverse customer balance
-    if (isCredit === 1 && customerId) {
-      db.run(`UPDATE customers SET current_balance = MAX(0, current_balance - ?) WHERE id = ?;`, [grandTotal, customerId]);
-    }
-
     // Mark sale voided
     db.run(
       `UPDATE sales SET is_voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ? WHERE id = ?;`,
       [reason, userId, now, saleId]
+    );
+
+    db.run('COMMIT;');
+    await persistDbToStorage(db);
+
+    await logAudit(
+      userId,
+      userName,
+      'SALE_VOID',
+      'sale',
+      saleId,
+      `Voided sale #${receiptNumber} (KES ${grandTotal.toFixed(2)}). Reason: ${reason}. Inventory restocked.`
     );
 
     db.run('COMMIT;');
@@ -880,130 +909,6 @@ export async function getSales(options?: {
   }
 
   return sales;
-}
-
-// Customers & Credit
-export async function getCustomers(): Promise<Customer[]> {
-  return runQuery<Customer>('SELECT * FROM customers ORDER BY name ASC;');
-}
-
-export async function addCustomer(
-  customer: Omit<Customer, 'id' | 'created_at' | 'current_balance'>,
-  userId: number,
-  userName: string
-): Promise<number> {
-  const now = new Date().toISOString();
-  const { lastInsertId } = await runExecute(
-    `INSERT INTO customers (name, phone, email, institution_type, credit_limit, current_balance, created_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?);`,
-    [
-      customer.name.trim(),
-      customer.phone.trim(),
-      customer.email?.trim() || null,
-      customer.institution_type || 'individual',
-      customer.credit_limit || 0,
-      now,
-    ]
-  );
-  await logAudit(userId, userName, 'CUSTOMER_CREATE', 'customer', lastInsertId, `Added customer "${customer.name}" with credit limit KES ${customer.credit_limit}.`);
-  return lastInsertId;
-}
-
-export async function updateCustomer(
-  id: number,
-  customer: Partial<Customer>,
-  userId: number,
-  userName: string
-): Promise<void> {
-  const current = await runQueryOne<Customer>('SELECT * FROM customers WHERE id = ?', [id]);
-  if (!current) throw new Error('Customer not found');
-
-  await runExecute(
-    `UPDATE customers SET
-      name = ?,
-      phone = ?,
-      email = ?,
-      institution_type = ?,
-      credit_limit = ?
-     WHERE id = ?;`,
-    [
-      customer.name !== undefined ? customer.name.trim() : current.name,
-      customer.phone !== undefined ? customer.phone.trim() : current.phone,
-      customer.email !== undefined ? customer.email?.trim() || null : current.email,
-      customer.institution_type !== undefined ? customer.institution_type : current.institution_type,
-      customer.credit_limit !== undefined ? customer.credit_limit : current.credit_limit,
-      id,
-    ]
-  );
-
-  await logAudit(userId, userName, 'CUSTOMER_UPDATE', 'customer', id, `Updated customer "${customer.name || current.name}".`);
-}
-
-export async function recordCreditPayment(
-  payment: {
-    customerId: number;
-    amount: number;
-    paymentMethod: 'cash' | 'mpesa' | 'bank';
-    referenceCode?: string;
-    notes?: string;
-  },
-  userId: number,
-  userName: string
-): Promise<void> {
-  if (payment.amount <= 0) {
-    throw new Error('Payment amount must be greater than zero.');
-  }
-
-  const db = await getDatabase();
-  const now = new Date().toISOString();
-
-  db.run('BEGIN TRANSACTION;');
-  try {
-    const custRes = db.exec(`SELECT name, current_balance FROM customers WHERE id = ${payment.customerId};`);
-    if (!custRes[0] || custRes[0].values.length === 0) {
-      throw new Error('Customer not found');
-    }
-    const customerName = custRes[0].values[0][0] as string;
-    const currentBalance = Number(custRes[0].values[0][1]);
-
-    const newBalance = Math.round((currentBalance - payment.amount) * 100) / 100;
-
-    // Update customer balance
-    db.run(`UPDATE customers SET current_balance = ? WHERE id = ?;`, [newBalance, payment.customerId]);
-
-    // Record credit payment
-    db.run(
-      `INSERT INTO credit_payments (customer_id, amount, payment_method, reference_code, notes, user_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?);`,
-      [payment.customerId, payment.amount, payment.paymentMethod, payment.referenceCode || null, payment.notes || null, userId, now]
-    );
-
-    db.run('COMMIT;');
-    await persistDbToStorage(db);
-
-    await logAudit(
-      userId,
-      userName,
-      'CREDIT_PAYMENT',
-      'customer',
-      payment.customerId,
-      `Recorded debt repayment of KES ${payment.amount.toFixed(2)} for "${customerName}". New balance: KES ${newBalance.toFixed(2)}.`
-    );
-  } catch (error) {
-    db.run('ROLLBACK;');
-    throw error;
-  }
-}
-
-export async function getCustomerPayments(customerId: number): Promise<any[]> {
-  return runQuery(
-    `SELECT cp.*, u.full_name as user_name
-     FROM credit_payments cp
-     LEFT JOIN users u ON cp.user_id = u.id
-     WHERE cp.customer_id = ?
-     ORDER BY cp.id DESC;`,
-    [customerId]
-  );
 }
 
 // Suppliers & Purchases
@@ -1200,7 +1105,6 @@ export async function addExpense(
 export async function getFinancialSummary(startDate: string, endDate: string): Promise<{
   revenue: number;
   cashReceived: number;
-  creditSalesTotal: number;
   cogs: number;
   grossProfit: number;
   totalExpenses: number;
@@ -1213,11 +1117,10 @@ export async function getFinancialSummary(startDate: string, endDate: string): P
   const sales = await runQuery<{
     grand_total: number;
     total_paid: number;
-    is_credit: number;
     is_voided: number;
     payment_method: string;
   }>(
-    `SELECT grand_total, total_paid, is_credit, is_voided, payment_method
+    `SELECT grand_total, total_paid, is_voided, payment_method
      FROM sales
      WHERE substr(created_at, 1, 10) >= ? AND substr(created_at, 1, 10) <= ?;`,
     [startDate, endDate]
@@ -1225,13 +1128,11 @@ export async function getFinancialSummary(startDate: string, endDate: string): P
 
   let revenue = 0;
   let cashReceived = 0;
-  let creditSalesTotal = 0;
   let totalTransactions = 0;
   let voidedCount = 0;
   const paymentBreakdown: { [method: string]: number } = {
     cash: 0,
     mpesa: 0,
-    credit: 0,
     split: 0,
     card: 0,
   };
@@ -1243,11 +1144,7 @@ export async function getFinancialSummary(startDate: string, endDate: string): P
     }
     totalTransactions++;
     revenue += s.grand_total;
-    if (s.is_credit) {
-      creditSalesTotal += s.grand_total;
-    } else {
-      cashReceived += s.total_paid;
-    }
+    cashReceived += s.total_paid;
     const method = s.payment_method || 'cash';
     paymentBreakdown[method] = (paymentBreakdown[method] || 0) + s.grand_total;
   }
@@ -1276,7 +1173,6 @@ export async function getFinancialSummary(startDate: string, endDate: string): P
   return {
     revenue: Math.round(revenue * 100) / 100,
     cashReceived: Math.round(cashReceived * 100) / 100,
-    creditSalesTotal: Math.round(creditSalesTotal * 100) / 100,
     cogs: Math.round(cogs * 100) / 100,
     grossProfit,
     totalExpenses: Math.round(totalExpenses * 100) / 100,

@@ -66,27 +66,7 @@ export function calculateChange(grandTotal: number, amountTendered: number): num
   return Math.round((amountTendered - grandTotal) * 100) / 100;
 }
 
-export function calculateAvailableCredit(creditLimit: number, currentBalance: number): number {
-  return Math.max(0, Math.round((creditLimit - currentBalance) * 100) / 100);
-}
 
-export function canCustomerBorrow(
-  creditLimit: number,
-  currentBalance: number,
-  requestedAmount: number
-): { allowed: boolean; reason?: string } {
-  if (requestedAmount <= 0) {
-    return { allowed: false, reason: 'Amount must be greater than zero' };
-  }
-  const available = calculateAvailableCredit(creditLimit, currentBalance);
-  if (requestedAmount > available) {
-    return {
-      allowed: false,
-      reason: `Amount exceeds available credit limit. Available: KES ${available.toFixed(2)}, Requested: KES ${requestedAmount.toFixed(2)}`,
-    };
-  }
-  return { allowed: true };
-}
 
 export function calculateProfitability(
   revenue: number,

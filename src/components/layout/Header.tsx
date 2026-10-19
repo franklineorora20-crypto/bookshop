@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, HardDrive, Clock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { ShoppingCart, HardDrive, Clock, Search, Command, Menu } from 'lucide-react';
 import { formatDateTime } from '../../utils/formatters.ts';
 
 interface HeaderProps {
@@ -8,6 +8,7 @@ interface HeaderProps {
   onNewSaleClick: () => void;
   lastBackupTime?: string | null;
   onToggleMobileMenu?: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -16,6 +17,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNewSaleClick,
   lastBackupTime,
   onToggleMobileMenu,
+  onOpenCommandPalette,
 }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
 
@@ -42,57 +44,78 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between shadow-xs select-none">
+    <header className="h-14 bg-white/80 backdrop-blur-md border-b border-neutral-200/80 px-4 sm:px-6 flex items-center justify-between shadow-xs select-none sticky top-0 z-20">
       <div className="flex items-center gap-3">
         {onToggleMobileMenu && (
           <button
             onClick={onToggleMobileMenu}
-            className="md:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
+            className="md:hidden p-1.5 rounded-lg text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
             aria-label="Toggle navigation menu"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
+            <Menu className="w-5 h-5" />
           </button>
         )}
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-slate-800 leading-tight truncate max-w-[200px] sm:max-w-none">{title}</h2>
-          {subtitle && <p className="text-xs text-slate-500 hidden sm:block">{subtitle}</p>}
+          <h2 className="text-sm sm:text-base font-semibold text-neutral-900 tracking-tight leading-tight truncate max-w-[200px] sm:max-w-none">
+            {title}
+          </h2>
+          {subtitle && (
+            <p className="text-[11px] text-neutral-400 font-normal hidden sm:block truncate max-w-md">
+              {subtitle}
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* Backup Status */}
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
-          <HardDrive className="w-4 h-4 text-slate-500" />
-          <span className="text-slate-600">Backup:</span>
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        {/* Quick Command Palette Button */}
+        {onOpenCommandPalette && (
+          <button
+            onClick={onOpenCommandPalette}
+            className="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-neutral-200/80 bg-neutral-50/80 hover:bg-neutral-100/80 text-neutral-500 hover:text-neutral-800 text-xs transition-colors tactile-btn"
+          >
+            <Search className="w-3.5 h-3.5 text-neutral-400" />
+            <span className="text-[11px] text-neutral-500">Quick search...</span>
+            <kbd className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono text-neutral-500 bg-white border border-neutral-200 rounded shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+              <span className="text-[9px]">⌘</span>K
+            </kbd>
+          </button>
+        )}
+
+        {/* Backup Status with Emil Kowalski clean dot indicator */}
+        <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg border border-neutral-200/70 bg-white text-xs text-neutral-600">
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              lastBackupTime ? 'bg-emerald-500 ring-2 ring-emerald-100' : 'bg-amber-500 ring-2 ring-amber-100'
+            }`}
+          />
+          <span className="text-[11px] text-neutral-500">Backup:</span>
           {lastBackupTime ? (
-            <span className="font-semibold text-emerald-700 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-medium text-neutral-800 tabular-nums">
               {formatDateTime(lastBackupTime)}
             </span>
           ) : (
-            <span className="font-semibold text-amber-600 flex items-center gap-1">
-              <AlertCircle className="w-3.5 h-3.5" />
-              Pending Backup
-            </span>
+            <span className="text-[11px] font-medium text-amber-600">Pending</span>
           )}
         </div>
 
-        {/* Africa/Nairobi Live Clock */}
-        <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-medium text-slate-700">
-          <Clock className="w-4 h-4 text-emerald-600" />
-          <span>{currentTime || 'Nairobi Time'}</span>
-          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1 rounded">EAT</span>
+        {/* Live Africa/Nairobi Clock with tabular numerals */}
+        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-neutral-200/70 bg-white text-xs text-neutral-600 tabular-nums">
+          <Clock className="w-3.5 h-3.5 text-neutral-400" />
+          <span className="text-[11px] font-medium text-neutral-700">{currentTime || 'Nairobi Time'}</span>
+          <span className="text-[9px] font-mono font-medium text-neutral-400 ml-0.5">EAT</span>
         </div>
 
-        {/* POS Fast Button */}
+        {/* POS Fast Button - Emil Kowalski tactile button */}
         <button
           onClick={onNewSaleClick}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm shadow-sm transition-all hover:shadow active:scale-[0.98]"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg font-medium text-xs shadow-xs tactile-btn"
         >
-          <ShoppingCart className="w-4 h-4" />
-          <span>New Sale (F2)</span>
+          <ShoppingCart className="w-3.5 h-3.5 text-neutral-300" />
+          <span>New Sale</span>
+          <kbd className="hidden sm:inline-block px-1 py-0.2 text-[9px] font-mono font-normal bg-neutral-800 border border-neutral-700 rounded text-neutral-300">
+            F2
+          </kbd>
         </button>
       </div>
     </header>

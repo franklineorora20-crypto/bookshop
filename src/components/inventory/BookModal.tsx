@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { X, BookPlus, AlertCircle } from 'lucide-react';
 import { Book } from '../../types/index.ts';
 
@@ -97,72 +98,97 @@ export const BookModal: React.FC<BookModalProps> = ({ book, onClose, onSave }) =
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-neutral-950/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 8 }}
+        transition={{ type: 'spring', duration: 0.3, bounce: 0.1 }}
+        className="relative bg-white rounded-2xl shadow-xl border border-neutral-200 max-w-lg w-full overflow-hidden text-neutral-900 z-10"
+      >
+        <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <BookPlus className="w-5 h-5 text-emerald-400" />
-            <h3 className="font-bold text-sm">
-              {isEditing ? `Edit Book: ${book.title}` : 'Add New Book to Inventory'}
+            <BookPlus className="w-4 h-4 text-neutral-600" />
+            <h3 className="font-semibold text-sm tracking-tight text-neutral-900">
+              {isEditing ? `Edit: ${book.title}` : 'Add New Book'}
             </h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <X className="w-5 h-5" />
+          <button
+            onClick={onClose}
+            className="p-1 rounded-md text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {error && (
-            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Book Title *</label>
+            <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+              Book Title *
+            </label>
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Fathers of Nations"
-              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 font-medium"
+              className="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-neutral-200 focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Author *</label>
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                Author *
+              </label>
               <input
                 type="text"
                 required
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
                 placeholder="e.g. Paul B. Vitta"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 focus:outline-none focus:border-neutral-900"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Publisher *</label>
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                Publisher *
+              </label>
               <input
                 type="text"
                 required
                 value={publisher}
                 onChange={(e) => setPublisher(e.target.value)}
                 placeholder="e.g. Oxford University Press"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 focus:outline-none focus:border-neutral-900"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                Category
+              </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-500 font-medium"
+                className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 bg-white focus:outline-none focus:border-neutral-900 font-medium"
               >
                 <option value="KCSE Set Books">KCSE Set Books</option>
                 <option value="CBC Junior School">CBC Junior School</option>
@@ -177,44 +203,50 @@ export const BookModal: React.FC<BookModalProps> = ({ book, onClose, onSave }) =
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Edition / Notes</label>
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                Edition / Notes
+              </label>
               <input
                 type="text"
                 value={edition}
                 onChange={(e) => setEdition(e.target.value)}
                 placeholder="e.g. 1st Edition / 2024"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 focus:outline-none focus:border-neutral-900"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">ISBN (Optional)</label>
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                ISBN (Optional)
+              </label>
               <input
                 type="text"
                 value={isbn}
                 onChange={(e) => setIsbn(e.target.value)}
                 placeholder="e.g. 978-0195738592"
-                className="w-full px-3 py-2 font-mono text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-1.5 font-mono text-xs rounded-lg border border-neutral-200 focus:outline-none focus:border-neutral-900"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Barcode / Code</label>
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                Barcode / Code
+              </label>
               <input
                 type="text"
                 value={barcode}
                 onChange={(e) => setBarcode(e.target.value)}
                 placeholder="e.g. 9780195738592"
-                className="w-full px-3 py-2 font-mono text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-1.5 font-mono text-xs rounded-lg border border-neutral-200 focus:outline-none focus:border-neutral-900"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-neutral-50 border border-neutral-100">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Purchase / Cost Price (KES) *
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                Cost Price (KES) *
               </label>
               <input
                 type="number"
@@ -223,12 +255,12 @@ export const BookModal: React.FC<BookModalProps> = ({ book, onClose, onSave }) =
                 value={purchasePrice}
                 onChange={(e) => setPurchasePrice(e.target.value)}
                 placeholder="0.00"
-                className="w-full px-3 py-2 font-bold text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 bg-white"
+                className="w-full px-3 py-1.5 font-mono font-medium text-xs rounded-lg border border-neutral-200 bg-white focus:outline-none focus:border-neutral-900"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Selling / Retail Price (KES) *
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                Selling Price (KES) *
               </label>
               <input
                 type="number"
@@ -237,62 +269,62 @@ export const BookModal: React.FC<BookModalProps> = ({ book, onClose, onSave }) =
                 value={sellingPrice}
                 onChange={(e) => setSellingPrice(e.target.value)}
                 placeholder="0.00"
-                className="w-full px-3 py-2 font-bold text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 bg-white text-emerald-800"
+                className="w-full px-3 py-1.5 font-mono font-semibold text-xs rounded-lg border border-neutral-200 bg-white focus:outline-none focus:border-neutral-900 text-neutral-900"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {isEditing ? 'Current Stock Count' : 'Initial Stock Quantity'}
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
+                {isEditing ? 'Current Stock' : 'Initial Stock Quantity'}
               </label>
               <input
                 type="number"
                 disabled={isEditing}
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className={`w-full px-3 py-2 text-xs rounded-xl border border-slate-300 ${
-                  isEditing ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white'
+                className={`w-full px-3 py-1.5 font-mono text-xs rounded-lg border border-neutral-200 ${
+                  isEditing ? 'bg-neutral-100 text-neutral-500 cursor-not-allowed' : 'bg-white'
                 }`}
               />
               {isEditing && (
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Use "Adjust Stock" on inventory row to modify live stock.
+                <p className="text-[10px] text-neutral-400 mt-0.5">
+                  Use "Stock" adjustment to modify live count.
                 </p>
               )}
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
                 Reorder Alert Level
               </label>
               <input
                 type="number"
                 value={reorderLevel}
                 onChange={(e) => setReorderLevel(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white"
+                className="w-full px-3 py-1.5 font-mono text-xs rounded-lg border border-neutral-200 bg-white"
               />
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+          <div className="pt-3 border-t border-neutral-100 flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-bold"
+              className="px-3.5 py-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 text-xs font-medium transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-sm"
+              className="px-4 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-medium transition-all shadow-xs tactile-btn"
             >
               {isSubmitting ? 'Saving...' : isEditing ? 'Update Book' : 'Add to Inventory'}
             </button>
           </div>
         </form>
-      </div>
+      </motion.div>
     </div>
   );
 };

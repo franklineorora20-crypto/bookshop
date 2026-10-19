@@ -9,7 +9,6 @@ import { DashboardView } from './components/dashboard/DashboardView.tsx';
 import { POSView } from './components/pos/POSView.tsx';
 import { InventoryView } from './components/inventory/InventoryView.tsx';
 import { PurchasesView } from './components/purchases/PurchasesView.tsx';
-import { CustomersView } from './components/customers/CustomersView.tsx';
 import { ExpensesView } from './components/expenses/ExpensesView.tsx';
 import { ReportsView } from './components/reports/ReportsView.tsx';
 import { UsersView } from './components/users/UsersView.tsx';
@@ -17,11 +16,10 @@ import { SettingsView } from './components/settings/SettingsView.tsx';
 import { LoginView } from './components/auth/LoginView.tsx';
 import { LockScreen } from './components/auth/LockScreen.tsx';
 import { ReceiptModal } from './components/pos/ReceiptModal.tsx';
-import { Book, Customer, Sale, ShopSettings, User } from './types/index.ts';
+import { Book, Sale, ShopSettings, User } from './types/index.ts';
 import {
   getDatabase,
   getBooks,
-  getCustomers,
   getDashboardMetrics,
   getShopSettings,
   getLastBackupTimestamp,
@@ -39,7 +37,6 @@ export default function App() {
 
   // Shared data state
   const [books, setBooks] = useState<Book[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [dashboardMetrics, setDashboardMetrics] = useState<any>(null);
   const [shopSettings, setShopSettings] = useState<ShopSettings | null>(null);
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
@@ -55,15 +52,13 @@ export default function App() {
   const refreshAllData = useCallback(async () => {
     try {
       await getDatabase(); // Ensure SQLite database initialized
-      const [bList, cList, metrics, settings, backupTime] = await Promise.all([
+      const [bList, metrics, settings, backupTime] = await Promise.all([
         getBooks({ includeArchived: false }),
-        getCustomers(),
         getDashboardMetrics(),
         getShopSettings(),
         getLastBackupTimestamp(),
       ]);
       setBooks(bList);
-      setCustomers(cList);
       setDashboardMetrics(metrics);
       setShopSettings(settings);
       setLastBackupTime(backupTime);
@@ -131,9 +126,6 @@ export default function App() {
       } else if (e.altKey && e.key.toLowerCase() === 's' && hasPermission(currentUser.role, 'CAN_MANAGE_PURCHASES')) {
         e.preventDefault();
         setActiveTab('purchases');
-      } else if (e.altKey && e.key.toLowerCase() === 'c') {
-        e.preventDefault();
-        setActiveTab('customers');
       } else if (e.altKey && e.key.toLowerCase() === 'e' && hasPermission(currentUser.role, 'CAN_MANAGE_EXPENSES')) {
         e.preventDefault();
         setActiveTab('expenses');
@@ -207,10 +199,6 @@ export default function App() {
       title: 'Purchases & Publisher Deliveries',
       subtitle: 'Goods Received Notes (GRN), invoice costs, and publisher balances',
     },
-    customers: {
-      title: 'Customer Credit & Accounts',
-      subtitle: 'Manage school credit limits, debtor balances, and debt repayments',
-    },
     expenses: {
       title: 'Store Operating Expenses',
       subtitle: 'Rent, utility tokens, salaries, licensing, and carrier bags',
@@ -272,10 +260,10 @@ export default function App() {
           {activeTab === 'pos' && (
             <POSView
               books={books}
-              customers={customers}
               settings={shopSettings}
               currentUser={currentUser}
               onRefreshData={refreshAllData}
+              onNavigateInventory={() => setActiveTab('inventory')}
             />
           )}
 
@@ -290,14 +278,6 @@ export default function App() {
           {activeTab === 'purchases' && (
             <PurchasesView
               books={books}
-              currentUser={currentUser}
-              onRefreshData={refreshAllData}
-            />
-          )}
-
-          {activeTab === 'customers' && (
-            <CustomersView
-              customers={customers}
               currentUser={currentUser}
               onRefreshData={refreshAllData}
             />

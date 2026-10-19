@@ -1,4 +1,4 @@
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 export const SCHEMA_SQL = `
 -- Schema Version Tracking
@@ -99,36 +99,12 @@ CREATE TABLE IF NOT EXISTS purchase_items (
   total_cost REAL NOT NULL CHECK(total_cost >= 0)
 );
 
--- Customers & Customer Credit
-CREATE TABLE IF NOT EXISTS customers (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  phone TEXT NOT NULL,
-  email TEXT,
-  institution_type TEXT DEFAULT 'individual',
-  credit_limit REAL NOT NULL DEFAULT 0 CHECK(credit_limit >= 0),
-  current_balance REAL NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS credit_payments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  customer_id INTEGER NOT NULL REFERENCES customers(id),
-  amount REAL NOT NULL CHECK(amount > 0),
-  payment_method TEXT NOT NULL,
-  reference_code TEXT,
-  notes TEXT,
-  user_id INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL
-);
-
--- Sales & Point of Sale
+-- Sales & Point of Sale (Non-Credit Only)
 CREATE TABLE IF NOT EXISTS sales (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   receipt_number TEXT UNIQUE NOT NULL,
   user_id INTEGER NOT NULL REFERENCES users(id),
   cashier_name TEXT,
-  customer_id INTEGER REFERENCES customers(id),
   customer_name TEXT,
   subtotal REAL NOT NULL,
   discount_total REAL NOT NULL DEFAULT 0,
@@ -136,10 +112,9 @@ CREATE TABLE IF NOT EXISTS sales (
   grand_total REAL NOT NULL,
   total_paid REAL NOT NULL,
   change_amount REAL NOT NULL DEFAULT 0,
-  payment_method TEXT NOT NULL,
+  payment_method TEXT NOT NULL CHECK(payment_method IN ('cash', 'mpesa', 'split', 'card')),
   payment_reference TEXT,
   payments_json TEXT,
-  is_credit INTEGER NOT NULL DEFAULT 0,
   is_voided INTEGER NOT NULL DEFAULT 0,
   void_reason TEXT,
   voided_by_user_id INTEGER REFERENCES users(id),
@@ -149,7 +124,6 @@ CREATE TABLE IF NOT EXISTS sales (
 
 CREATE INDEX IF NOT EXISTS idx_sales_receipt ON sales(receipt_number);
 CREATE INDEX IF NOT EXISTS idx_sales_created ON sales(created_at);
-CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_id);
 
 CREATE TABLE IF NOT EXISTS sale_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -5,7 +5,6 @@ import {
   ShoppingCart,
   Boxes,
   Truck,
-  Users,
   ReceiptText,
   BarChart3,
   UserCog,
@@ -13,7 +12,7 @@ import {
   Lock,
   LogOut,
   WifiOff,
-  ShieldCheck,
+  X,
 } from 'lucide-react';
 import { User } from '../../types/index.ts';
 import { hasPermission } from '../../services/auth.ts';
@@ -23,7 +22,6 @@ export type NavTab =
   | 'pos'
   | 'inventory'
   | 'purchases'
-  | 'customers'
   | 'expenses'
   | 'reports'
   | 'users'
@@ -55,68 +53,68 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems: Array<{
     id: NavTab;
     label: string;
-    icon: React.ReactNode;
+    icon: any;
     shortcut: string;
     badge?: number;
-    permissionKey?: 'CAN_MANAGE_INVENTORY' | 'CAN_MANAGE_PURCHASES' | 'CAN_MANAGE_EXPENSES' | 'CAN_VIEW_PROFITABILITY' | 'CAN_MANAGE_USERS' | 'CAN_EDIT_SETTINGS';
+    permissionKey?:
+      | 'CAN_MANAGE_INVENTORY'
+      | 'CAN_MANAGE_PURCHASES'
+      | 'CAN_MANAGE_EXPENSES'
+      | 'CAN_VIEW_PROFITABILITY'
+      | 'CAN_MANAGE_USERS'
+      | 'CAN_EDIT_SETTINGS';
   }> = [
     {
       id: 'dashboard',
       label: 'Dashboard',
-      icon: <LayoutDashboard className="w-5 h-5" />,
+      icon: LayoutDashboard,
       shortcut: 'Alt+D',
     },
     {
       id: 'pos',
-      label: 'Point of Sale (POS)',
-      icon: <ShoppingCart className="w-5 h-5 text-emerald-400" />,
+      label: 'Point of Sale',
+      icon: ShoppingCart,
       shortcut: 'F2',
     },
     {
       id: 'inventory',
-      label: 'Book Inventory',
-      icon: <Boxes className="w-5 h-5" />,
+      label: 'Inventory',
+      icon: Boxes,
       shortcut: 'Alt+I',
       badge: lowStockCount > 0 ? lowStockCount : undefined,
     },
     {
       id: 'purchases',
-      label: 'Purchases & Suppliers',
-      icon: <Truck className="w-5 h-5" />,
+      label: 'Purchases & Stock',
+      icon: Truck,
       shortcut: 'Alt+S',
       permissionKey: 'CAN_MANAGE_PURCHASES',
     },
     {
-      id: 'customers',
-      label: 'Customer Credit',
-      icon: <Users className="w-5 h-5" />,
-      shortcut: 'Alt+C',
-    },
-    {
       id: 'expenses',
       label: 'Shop Expenses',
-      icon: <ReceiptText className="w-5 h-5" />,
+      icon: ReceiptText,
       shortcut: 'Alt+E',
       permissionKey: 'CAN_MANAGE_EXPENSES',
     },
     {
       id: 'reports',
-      label: 'Reports & Profits',
-      icon: <BarChart3 className="w-5 h-5" />,
+      label: 'Financial Reports',
+      icon: BarChart3,
       shortcut: 'Alt+R',
       permissionKey: 'CAN_VIEW_PROFITABILITY',
     },
     {
       id: 'users',
       label: 'Staff & Roles',
-      icon: <UserCog className="w-5 h-5" />,
+      icon: UserCog,
       shortcut: 'Alt+U',
       permissionKey: 'CAN_MANAGE_USERS',
     },
     {
       id: 'settings',
       label: 'Settings & Backups',
-      icon: <Settings className="w-5 h-5" />,
+      icon: Settings,
       shortcut: 'Alt+T',
       permissionKey: 'CAN_EDIT_SETTINGS',
     },
@@ -128,128 +126,138 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {isMobileOpen && (
         <div
           onClick={onCloseMobile}
-          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-30 md:hidden animate-in fade-in"
+          className="fixed inset-0 bg-neutral-950/60 backdrop-blur-xs z-30 md:hidden transition-opacity duration-200"
         />
       )}
 
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-200 flex flex-col h-screen border-r border-slate-800 select-none shrink-0 transition-transform duration-200 ease-in-out ${
+        className={`fixed md:static inset-y-0 left-0 z-40 w-60 bg-neutral-950 text-neutral-300 flex flex-col h-screen border-r border-neutral-800/80 select-none shrink-0 transition-transform duration-200 ease-out ${
           isMobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
         }`}
       >
         {/* Brand Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-950/40">
-              <BookOpen className="w-5 h-5" />
+        <div className="h-14 px-4 border-b border-neutral-800/80 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-700/80 flex items-center justify-center text-neutral-100 shadow-xs">
+              <BookOpen className="w-4 h-4" />
             </div>
             <div>
-              <h1 className="font-bold text-base tracking-tight text-white leading-tight">KitabuPOS</h1>
-              <p className="text-[11px] text-emerald-400 font-medium">Bookshop System</p>
+              <h1 className="font-semibold text-xs tracking-tight text-neutral-100 leading-tight">
+                KitabuPOS
+              </h1>
+              <span className="text-[10px] text-neutral-500 font-normal">
+                Bookshop System
+              </span>
             </div>
           </div>
           {onCloseMobile && (
             <button
               onClick={onCloseMobile}
-              className="md:hidden p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              className="md:hidden p-1 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-800"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-      {/* Offline Status Badge */}
-      <div className="mx-3 mt-3 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2">
-          <WifiOff className="w-3.5 h-3.5 text-amber-400" />
-          <span className="font-medium text-slate-300">Offline Mode</span>
-        </div>
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800/50">
-          SQLite OK
-        </span>
-      </div>
-
-      {/* Navigation Links */}
-      <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          if (item.permissionKey && !hasPermission(role, item.permissionKey)) {
-            return null;
-          }
-
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-950/50 font-semibold'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                {item.icon}
-                <span>{item.label}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {item.badge !== undefined && (
-                  <span className="bg-amber-500 text-slate-950 text-[11px] font-bold px-1.5 py-0.2 rounded-full">
-                    {item.badge}
-                  </span>
-                )}
-                <span className={`text-[10px] ${isActive ? 'text-emerald-200' : 'text-slate-500'}`}>
-                  {item.shortcut}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* User Session & Quick Actions */}
-      <div className="p-3 border-t border-slate-800 bg-slate-950/40">
-        <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/40 mb-2">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-white truncate max-w-[130px]">
-              {currentUser?.full_name || 'Staff User'}
-            </span>
-            <span
-              className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
-                role === 'admin'
-                  ? 'bg-purple-900/80 text-purple-200 border border-purple-700/40'
-                  : role === 'manager'
-                  ? 'bg-blue-900/80 text-blue-200 border border-blue-700/40'
-                  : 'bg-emerald-900/80 text-emerald-200 border border-emerald-700/40'
-              }`}
-            >
-              {role}
+        {/* Offline Status */}
+        <div className="px-3 pt-3 pb-1">
+          <div className="px-2.5 py-1.5 rounded-lg bg-neutral-900/60 border border-neutral-800/60 flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
+              <span className="font-medium text-neutral-300">Offline SQLite</span>
+            </div>
+            <span className="font-mono text-[9px] text-neutral-500 uppercase">
+              Local DB
             </span>
           </div>
-          <p className="text-[11px] text-slate-400">@{currentUser?.username || 'user'}</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={onLock}
-            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition-colors"
-            title="Lock screen immediately"
-          >
-            <Lock className="w-3.5 h-3.5 text-amber-400" />
-            <span>Lock</span>
-          </button>
-          <button
-            onClick={onLogout}
-            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-xs font-medium border border-rose-800/40 transition-colors"
-            title="Sign out"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out</span>
-          </button>
+        {/* Navigation Items */}
+        <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
+          {navItems.map((item) => {
+            if (item.permissionKey && !hasPermission(role, item.permissionKey)) {
+              return null;
+            }
+
+            const isActive = activeTab === item.id;
+            const Icon = item.icon;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-120 tactile-btn ${
+                  isActive
+                    ? 'bg-neutral-800 text-white shadow-xs font-semibold'
+                    : 'text-neutral-400 hover:bg-neutral-900/90 hover:text-neutral-200'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon
+                    className={`w-4 h-4 ${
+                      isActive ? 'text-white' : 'text-neutral-500'
+                    }`}
+                  />
+                  <span>{item.label}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {item.badge !== undefined && (
+                    <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-medium px-1.5 py-0.2 rounded">
+                      {item.badge}
+                    </span>
+                  )}
+                  <kbd
+                    className={`text-[9px] font-mono px-1 py-0.2 rounded border ${
+                      isActive
+                        ? 'bg-neutral-700/60 border-neutral-600/50 text-neutral-300'
+                        : 'bg-neutral-900 border-neutral-800 text-neutral-500'
+                    }`}
+                  >
+                    {item.shortcut}
+                  </kbd>
+                </div>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* User Session Footer */}
+        <div className="p-3 border-t border-neutral-800/80 bg-neutral-950">
+          <div className="p-2 rounded-lg bg-neutral-900/70 border border-neutral-800/60 mb-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-neutral-200 truncate max-w-[120px]">
+                {currentUser?.full_name || 'Staff User'}
+              </span>
+              <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 border border-neutral-700/50">
+                {role}
+              </span>
+            </div>
+            <p className="text-[10px] font-mono text-neutral-500 mt-0.5">
+              @{currentUser?.username || 'user'}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              onClick={onLock}
+              className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 hover:text-neutral-200 text-xs transition-colors tactile-btn"
+              title="Lock screen immediately"
+            >
+              <Lock className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Lock</span>
+            </button>
+            <button
+              onClick={onLogout}
+              className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 hover:text-rose-400 text-xs transition-colors tactile-btn"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Exit</span>
+            </button>
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
     </>
   );
 };
