@@ -38,9 +38,11 @@ test('database schema and initialization has zero sample business data', async (
   const expensesRes = db.exec('SELECT COUNT(*) FROM expenses;');
   assert.equal(Number(expensesRes[0]?.values[0]?.[0]), 0, 'Must have 0 sample expenses');
 
-  // 3. Verify essential admin accounts & configuration exist
-  const usersRes = db.exec('SELECT username, role FROM users;');
-  assert.equal(usersRes[0]?.values.length, 3, 'Must have 3 initial staff roles');
+  // 3. Verify essential admin and cashier accounts & configuration exist
+  const usersRes = db.exec('SELECT username, role FROM users ORDER BY id ASC;');
+  assert.equal(usersRes[0]?.values.length, 2, 'Must have exactly 2 initial staff accounts: admin and cashier');
+  assert.equal(usersRes[0]?.values[0]?.[0], 'admin');
+  assert.equal(usersRes[0]?.values[1]?.[0], 'cashier');
 
   const settingsRes = db.exec('SELECT COUNT(*) FROM shop_settings;');
   assert.ok(Number(settingsRes[0]?.values[0]?.[0]) >= 5, 'Shop settings must be initialized');

@@ -8,7 +8,7 @@ Welcome to **KitabuPOS**, an offline bookshop management system engineered for h
 
 ```
 [Morning Opening]
-  1. Login with Cashier or Manager credentials.
+  1. Login with Cashier or Admin credentials.
   2. Review low-stock alerts on Store Dashboard.
   3. Verify receipt printer paper roll.
 
@@ -112,6 +112,5 @@ Welcome to **KitabuPOS**, an offline bookshop management system engineered for h
 - **Void Audit**: Every voided transaction with cashier details, restocked inventory count, and cancellation rationale.
 
 ### F. Staff Accounts & Permissions
-- **Admin**: Full access to all modules, settings, user accounts, and database restoration.
-- **Store Manager**: Access to POS, Inventory, Purchases, Expenses, and Financial Reports.
-- **Cashier**: Access to POS Register only. Restrained from accessing publisher wholesale costs, store profit margins, and user management.
+- **Admin**: Full access to all modules, settings, user accounts, inventory, and database restoration.
+- **Cashier**: Access to POS Register for processing sales. Restrained from accessing publisher wholesale costs, store profit margins, and administrative user controls.

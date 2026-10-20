@@ -230,7 +230,7 @@ export default function App() {
     },
     users: {
       title: 'Staff Accounts & Roles',
-      subtitle: 'Administrator, store manager, and cashier permission controls',
+      subtitle: 'Administrator and cashier permission controls',
     },
     settings: {
       title: 'Settings, Backup & Data Integrity',

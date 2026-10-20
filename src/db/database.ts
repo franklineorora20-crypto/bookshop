@@ -190,6 +190,21 @@ async function migrateDatabase(db: Database): Promise<void> {
       throw migErr;
     }
   }
+
+  if (!appliedVersions.includes(3)) {
+    // Migration 3: Remove manager account and enforce only admin and cashier logins
+    db.run('BEGIN TRANSACTION;');
+    try {
+      db.run("DELETE FROM users WHERE username = 'manager' OR role = 'manager';");
+      db.run(`INSERT INTO schema_migrations (version, applied_at) VALUES (3, '${now}');`);
+      db.run('COMMIT;');
+      await persistDbToStorage(db);
+    } catch (migErr) {
+      db.run('ROLLBACK;');
+      console.error('Migration v3 failed:', migErr);
+      throw migErr;
+    }
+  }
 }
 
 async function initFreshDatabase(db: Database): Promise<void> {
@@ -202,7 +217,7 @@ async function initFreshDatabase(db: Database): Promise<void> {
       console.warn('Seed statement error (ignored if already existing):', e);
     }
   }
-  db.run(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (2, '${new Date().toISOString()}');`);
+  db.run(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (3, '${new Date().toISOString()}');`);
   await persistDbToStorage(db);
 }
 

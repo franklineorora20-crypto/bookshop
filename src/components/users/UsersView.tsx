@@ -237,7 +237,6 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
                       className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 bg-white font-medium"
                     >
                       <option value="cashier">Cashier (POS & Sales only)</option>
-                      <option value="manager">Store Manager (Inventory, Reports, Voids)</option>
                       <option value="admin">System Administrator (Full Access)</option>
                     </select>
                   </div>

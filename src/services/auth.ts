@@ -11,16 +11,16 @@ export interface AuthSession {
 const SESSION_STORAGE_KEY = 'kitabupos_auth_session';
 
 export const PERMISSIONS = {
-  CAN_SELL: ['admin', 'manager', 'cashier'],
-  CAN_MANAGE_INVENTORY: ['admin', 'manager'],
-  CAN_ADJUST_STOCK: ['admin', 'manager'],
-  CAN_VOID_SALE: ['admin', 'manager'],
-  CAN_VIEW_PROFITABILITY: ['admin', 'manager'],
-  CAN_MANAGE_PURCHASES: ['admin', 'manager'],
-  CAN_MANAGE_EXPENSES: ['admin', 'manager'],
+  CAN_SELL: ['admin', 'cashier'],
+  CAN_MANAGE_INVENTORY: ['admin'],
+  CAN_ADJUST_STOCK: ['admin'],
+  CAN_VOID_SALE: ['admin'],
+  CAN_VIEW_PROFITABILITY: ['admin'],
+  CAN_MANAGE_PURCHASES: ['admin'],
+  CAN_MANAGE_EXPENSES: ['admin'],
   CAN_MANAGE_USERS: ['admin'],
   CAN_RESTORE_DATABASE: ['admin'],
-  CAN_EDIT_SETTINGS: ['admin', 'manager'],
+  CAN_EDIT_SETTINGS: ['admin'],
 } as const;
 
 export function hasPermission(role: UserRole, permissionKey: keyof typeof PERMISSIONS): boolean {

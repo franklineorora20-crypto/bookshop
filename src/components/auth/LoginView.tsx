@@ -111,25 +111,18 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           <p className="text-[10px] text-neutral-400 uppercase tracking-wider font-medium text-center mb-2">
             Quick Local Accounts
           </p>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => handleQuickSwitch('admin', 'admin123')}
-              className="p-1.5 rounded-lg bg-white border border-neutral-200 hover:bg-neutral-100 text-[11px] font-medium text-neutral-700 transition-colors text-center tactile-btn"
+              className="py-2 px-3 rounded-lg bg-white border border-neutral-200 hover:bg-neutral-100 text-xs font-semibold text-neutral-800 transition-colors text-center tactile-btn"
             >
               Admin
             </button>
             <button
               type="button"
-              onClick={() => handleQuickSwitch('manager', 'manager123')}
-              className="p-1.5 rounded-lg bg-white border border-neutral-200 hover:bg-neutral-100 text-[11px] font-medium text-neutral-700 transition-colors text-center tactile-btn"
-            >
-              Manager
-            </button>
-            <button
-              type="button"
               onClick={() => handleQuickSwitch('cashier', 'cashier123')}
-              className="p-1.5 rounded-lg bg-white border border-neutral-200 hover:bg-neutral-100 text-[11px] font-medium text-neutral-700 transition-colors text-center tactile-btn"
+              className="py-2 px-3 rounded-lg bg-white border border-neutral-200 hover:bg-neutral-100 text-xs font-semibold text-neutral-800 transition-colors text-center tactile-btn"
             >
               Cashier
             </button>

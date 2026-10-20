@@ -93,8 +93,7 @@ For testing and initial onboarding, the database initializes with the following 
 | Role | Username | Password | PIN |
 |---|---|---|---|
 | **System Administrator** | `admin` | `admin123` | `1234` |
-| **Store Manager** | `manager` | `manager123` | `5678` |
-| **POS Cashier** | `cashier` | `cashier123` | `9999` |
+| **POS Cashier** | `cashier` | `cashier123` | `3456` |
 
 Staff can modify their passwords and settings in the **Staff & Roles** and **Settings** modules.
 

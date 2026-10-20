@@ -2,18 +2,16 @@ import bcrypt from 'bcryptjs';
 
 export async function getSeedQueries(): Promise<string[]> {
   const adminHash = bcrypt.hashSync('admin123', 8);
-  const managerHash = bcrypt.hashSync('manager123', 8);
   const cashierHash = bcrypt.hashSync('cashier123', 8);
 
   const now = new Date().toISOString();
 
   return [
-    `INSERT INTO schema_migrations (version, applied_at) VALUES (1, '${now}');`,
+    `INSERT INTO schema_migrations (version, applied_at) VALUES (1, '${now}'), (2, '${now}'), (3, '${now}');`,
 
     `INSERT INTO users (id, username, full_name, role, password_hash, pin, is_active, created_at) VALUES 
       (1, 'admin', 'System Administrator', 'admin', '${adminHash}', '1234', 1, '${now}'),
-      (2, 'manager', 'Store Manager', 'manager', '${managerHash}', '2345', 1, '${now}'),
-      (3, 'cashier', 'Bookshop Cashier', 'cashier', '${cashierHash}', '3456', 1, '${now}');`,
+      (2, 'cashier', 'Bookshop Cashier', 'cashier', '${cashierHash}', '3456', 1, '${now}');`,
 
     `INSERT INTO shop_settings (key, value) VALUES
       ('shop_name', ''),
