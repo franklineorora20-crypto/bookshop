@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { User } from '../../types/index.ts';
 import { hasPermission } from '../../services/auth.ts';
+import { PWAInstallButton } from '../common/PWAInstallButton.tsx';
 
 export type NavTab =
   | 'dashboard'
@@ -224,6 +225,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* User Session Footer */}
         <div className="p-3 border-t border-neutral-800/80 bg-neutral-950">
+          <PWAInstallButton variant="sidebar" className="mb-2" />
+
           <div className="p-2 rounded-lg bg-neutral-900/70 border border-neutral-800/60 mb-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-neutral-200 truncate max-w-[120px]">

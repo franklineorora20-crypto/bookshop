@@ -52,6 +52,7 @@ export const POSView: React.FC<POSViewProps> = ({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartDiscount, setCartDiscount] = useState<number>(0);
   const [customerName, setCustomerName] = useState<string>('');
+  const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
 
   // Checkout modal state
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -292,8 +293,44 @@ export const POSView: React.FC<POSViewProps> = ({
 
   return (
     <div className="flex flex-col lg:flex-row h-full overflow-hidden select-none bg-neutral-50/60">
+      {/* Mobile Top Segmented Tab Switcher */}
+      <div className="lg:hidden flex items-center bg-white border-b border-neutral-200 px-3 py-2 shrink-0">
+        <div className="grid grid-cols-2 w-full p-1 bg-neutral-100 rounded-lg text-xs font-medium">
+          <button
+            onClick={() => setMobileTab('catalog')}
+            className={`py-1.5 rounded-md transition-all text-center ${
+              mobileTab === 'catalog'
+                ? 'bg-white text-neutral-900 shadow-xs font-semibold'
+                : 'text-neutral-600 hover:text-neutral-900'
+            }`}
+          >
+            Catalog ({filteredBooks.length})
+          </button>
+          <button
+            onClick={() => setMobileTab('cart')}
+            className={`py-1.5 rounded-md transition-all text-center flex items-center justify-center gap-1.5 ${
+              mobileTab === 'cart'
+                ? 'bg-white text-neutral-900 shadow-xs font-semibold'
+                : 'text-neutral-600 hover:text-neutral-900'
+            }`}
+          >
+            <ShoppingCart className="w-3.5 h-3.5" />
+            <span>Cart ({cart.reduce((sum, i) => sum + i.quantity, 0)})</span>
+            {cart.length > 0 && (
+              <span className="font-mono text-[10px] text-emerald-600 font-semibold">
+                {formatKES(totals.grandTotal)}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* Left Area: Catalog & Filters */}
-      <div className="flex-1 flex flex-col min-w-0 border-r border-neutral-200/80 bg-white">
+      <div
+        className={`flex-1 flex flex-col min-w-0 border-r border-neutral-200/80 bg-white ${
+          mobileTab === 'cart' ? 'hidden lg:flex' : 'flex'
+        }`}
+      >
         {/* Search & Barcode Header */}
         <div className="p-3 sm:p-4 border-b border-neutral-100 flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
           <form onSubmit={handleBarcodeSubmit} className="relative flex-1">
@@ -411,13 +448,45 @@ export const POSView: React.FC<POSViewProps> = ({
             </div>
           )}
         </div>
+
+        {/* Mobile floating bottom cart preview bar */}
+        {cart.length > 0 && mobileTab === 'catalog' && (
+          <div className="lg:hidden sticky bottom-0 inset-x-0 p-3 bg-white/95 backdrop-blur-md border-t border-neutral-200 shadow-lg flex items-center justify-between z-10">
+            <div>
+              <p className="text-xs text-neutral-500 font-medium">
+                {cart.reduce((sum, i) => sum + i.quantity, 0)} items in cart
+              </p>
+              <p className="text-sm font-bold font-mono text-neutral-900 tabular-nums">
+                {formatKES(totals.grandTotal)}
+              </p>
+            </div>
+            <button
+              onClick={() => setMobileTab('cart')}
+              className="flex items-center gap-1.5 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-semibold shadow-xs tactile-btn"
+            >
+              <span>Review & Pay</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Right Area: Cart & Checkout Column */}
-      <div className="w-full lg:w-96 flex flex-col bg-white border-l border-neutral-200/80 shrink-0">
+      <div
+        className={`w-full lg:w-96 flex flex-col bg-white border-l border-neutral-200/80 shrink-0 ${
+          mobileTab === 'catalog' ? 'hidden lg:flex' : 'flex'
+        }`}
+      >
         {/* Cart Header */}
         <div className="p-3.5 border-b border-neutral-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMobileTab('catalog')}
+              className="lg:hidden p-1 -ml-1 text-neutral-600 hover:text-neutral-900 text-xs font-semibold"
+              title="Back to Catalog"
+            >
+              ←
+            </button>
             <ShoppingCart className="w-4 h-4 text-neutral-700" />
             <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-800">
               Current Sale ({cart.reduce((sum, i) => sum + i.quantity, 0)})

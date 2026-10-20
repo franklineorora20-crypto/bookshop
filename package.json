@@ -12,6 +12,9 @@
     "test": "node --test src/utils/calculations.test.ts src/utils/csv.test.ts src/db/database.test.ts",
     "clean": "node -e \"const fs=require('fs'); for (const p of ['dist','dist-electron','release']) fs.rmSync(p,{recursive:true,force:true})\"",
     "build:win": "npm run clean && npm run build && npm run build:electron && electron-builder --win nsis",
+    "build:mac": "npm run clean && npm run build && npm run build:electron && electron-builder --mac",
+    "build:linux": "npm run clean && npm run build && npm run build:electron && electron-builder --linux",
+    "build:all": "npm run clean && npm run build && npm run build:electron && electron-builder -mwl",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -41,8 +44,10 @@
     "autoprefixer": "^10.4.21",
     "electron": "^44.9.0",
     "esbuild": "^0.28.0",
+    "sharp": "^0.35.5",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vite-plugin-pwa": "^2.0.0"
   }
 }

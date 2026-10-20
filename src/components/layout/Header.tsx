@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingCart, HardDrive, Clock, Search, Command, Menu } from 'lucide-react';
 import { formatDateTime } from '../../utils/formatters.ts';
+import { PWAInstallButton } from '../common/PWAInstallButton.tsx';
 
 interface HeaderProps {
   title: string;
@@ -105,6 +106,9 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-[11px] font-medium text-neutral-700">{currentTime || 'Nairobi Time'}</span>
           <span className="text-[9px] font-mono font-medium text-neutral-400 ml-0.5">EAT</span>
         </div>
+
+        {/* PWA Install Button for Mobile & Desktop Web Browsers */}
+        <PWAInstallButton variant="header" />
 
         {/* POS Fast Button - Emil Kowalski tactile button */}
         <button

@@ -16,6 +16,8 @@ import { SettingsView } from './components/settings/SettingsView.tsx';
 import { LoginView } from './components/auth/LoginView.tsx';
 import { LockScreen } from './components/auth/LockScreen.tsx';
 import { ReceiptModal } from './components/pos/ReceiptModal.tsx';
+import { OfflineIndicator } from './components/common/OfflineIndicator.tsx';
+import { PWAInstallPrompt } from './components/common/PWAInstallPrompt.tsx';
 import { Book, Sale, ShopSettings, User } from './types/index.ts';
 import {
   getDatabase,
@@ -365,6 +367,12 @@ export default function App() {
           onLogout={handleLogout}
         />
       )}
+
+      {/* Network Connectivity & Offline Indicator */}
+      <OfflineIndicator />
+
+      {/* Custom In-App PWA Install Prompt */}
+      <PWAInstallPrompt />
     </div>
   );
 }

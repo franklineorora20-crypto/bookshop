@@ -2,7 +2,7 @@
  * Electron Main Process for KitabuPOS Offline Bookshop Management System
  * Configured for secure Windows desktop deployment with offline SQLite.
  */
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'node:url';
@@ -63,6 +63,65 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  const menuTemplate: any[] = [
+    ...(process.platform === 'darwin'
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' },
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' },
+            ],
+          },
+        ]
+      : []),
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(process.platform === 'darwin'
+          ? [{ type: 'separator' }, { role: 'front' }, { type: 'separator' }, { role: 'window' }]
+          : [{ role: 'close' }]),
+      ],
+    },
+  ];
+
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
+
   createWindow();
 
   app.on('activate', () => {

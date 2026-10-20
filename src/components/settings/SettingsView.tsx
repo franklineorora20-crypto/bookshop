@@ -18,6 +18,13 @@ import {
   Sliders,
   DollarSign,
   Receipt,
+  Laptop,
+  Smartphone,
+  Printer,
+  Barcode,
+  CheckCircle2,
+  Monitor,
+  Globe,
 } from 'lucide-react';
 import { ShopSettings, User } from '../../types/index.ts';
 import {
@@ -31,6 +38,7 @@ import {
   cleanBusinessDatabase,
 } from '../../db/database.ts';
 import { formatDateTime } from '../../utils/formatters.ts';
+import { PWAInstallButton } from '../common/PWAInstallButton.tsx';
 
 interface SettingsViewProps {
   settings: ShopSettings | null;
@@ -45,7 +53,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onRefreshData,
   onOpenWizard,
 }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'backup' | 'audit'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'backup' | 'audit' | 'device'>('profile');
 
   // Profile Form state
   const [shopName, setShopName] = useState(settings?.shop_name || '');
@@ -343,16 +351,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       )}
 
       {/* Top Tabs */}
-      <div className="flex border-b border-neutral-200 gap-4 text-xs font-bold">
+      <div className="flex border-b border-neutral-200 gap-4 text-xs font-bold overflow-x-auto pb-px scrollbar-none">
         {[
           { id: 'profile', label: 'Store Profile & Receipts' },
           { id: 'backup', label: 'Database Backup & Integrity' },
           { id: 'audit', label: 'System Audit Logs' },
+          { id: 'device', label: 'Cross-Platform & Install' },
         ].map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`pb-2.5 transition-colors border-b-2 ${
+            className={`pb-2.5 transition-colors border-b-2 whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-neutral-900 text-neutral-900'
                 : 'border-transparent text-neutral-500 hover:text-neutral-800'
@@ -845,6 +854,174 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 4: Cross-Platform & Device Compatibility */}
+      {activeTab === 'device' && (
+        <div className="space-y-6 max-w-4xl">
+          {/* Active Platform Diagnostics Card */}
+          <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-4">
+              <div>
+                <h3 className="font-bold text-sm text-neutral-900">Current Device & Storage Engine</h3>
+                <p className="text-xs text-neutral-500">Live hardware, browser, and local database storage status.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <PWAInstallButton variant="header" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
+                <div className="flex items-center gap-2 text-neutral-500 mb-1">
+                  <Monitor className="w-4 h-4 text-neutral-600" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">Platform</span>
+                </div>
+                <p className="text-xs font-bold text-neutral-900">
+                  {typeof navigator !== 'undefined'
+                    ? /iphone|ipad|ipod/i.test(navigator.userAgent)
+                      ? 'Apple iOS (Mobile)'
+                      : /android/i.test(navigator.userAgent)
+                      ? 'Android (Mobile / Tablet)'
+                      : /mac/i.test(navigator.userAgent)
+                      ? 'Apple macOS (Desktop)'
+                      : /linux/i.test(navigator.userAgent)
+                      ? 'Linux (Desktop)'
+                      : 'Microsoft Windows (Desktop)'
+                    : 'Universal Web'}
+                </p>
+                <span className="text-[10px] text-neutral-400 font-mono">
+                  {typeof window !== 'undefined' && (window as any).electronAPI
+                    ? 'Electron Native App'
+                    : window.matchMedia('(display-mode: standalone)').matches
+                    ? 'Installed Standalone PWA'
+                    : 'Standard Web Browser'}
+                </span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
+                <div className="flex items-center gap-2 text-neutral-500 mb-1">
+                  <HardDrive className="w-4 h-4 text-emerald-600" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">Database Engine</span>
+                </div>
+                <p className="text-xs font-bold text-neutral-900">SQLite WebAssembly (WASM)</p>
+                <span className="text-[10px] text-emerald-600 font-mono font-medium">
+                  IndexedDB persistent storage
+                </span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
+                <div className="flex items-center gap-2 text-neutral-500 mb-1">
+                  <Globe className="w-4 h-4 text-neutral-600" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">Network Status</span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <p className="text-xs font-bold text-neutral-900">Offline-First Capable</p>
+                </div>
+                <span className="text-[10px] text-neutral-400">Zero cloud dependency required</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Supported Operating Systems & Deployment Guide */}
+          <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-xs space-y-4">
+            <h3 className="font-bold text-sm text-neutral-900">Cross-Platform Deployment Instructions</h3>
+            <p className="text-xs text-neutral-500 -mt-2">
+              KitabuPOS runs seamlessly across all major platforms with local data persistence.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              {/* Windows */}
+              <div className="p-4 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
+                <div className="flex items-center gap-2 mb-2">
+                  <Laptop className="w-4 h-4 text-blue-600" />
+                  <h4 className="text-xs font-bold text-neutral-900">Windows 10 / 11</h4>
+                </div>
+                <ul className="text-xs text-neutral-600 space-y-1.5 list-disc list-inside">
+                  <li><strong>Instant PWA:</strong> In Chrome or Edge, click the <em>Install</em> icon in the address bar.</li>
+                  <li><strong>Native Installer:</strong> Run <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">npm run build:win</code> to produce <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">KitabuPOS-Setup.exe</code>.</li>
+                  <li><strong>Barcode & Printer:</strong> Works with all USB thermal receipt printers (POS-80, Epson) and barcode scanners.</li>
+                </ul>
+              </div>
+
+              {/* macOS */}
+              <div className="p-4 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
+                <div className="flex items-center gap-2 mb-2">
+                  <Laptop className="w-4 h-4 text-neutral-800" />
+                  <h4 className="text-xs font-bold text-neutral-900">Apple macOS</h4>
+                </div>
+                <ul className="text-xs text-neutral-600 space-y-1.5 list-disc list-inside">
+                  <li><strong>Instant PWA:</strong> In Safari (macOS Sonoma+), choose <em>File → Add to Dock</em>. In Chrome, click <em>Install</em>.</li>
+                  <li><strong>Native Installer:</strong> Run <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">npm run build:mac</code> to build universal DMG and ZIP packages.</li>
+                  <li><strong>Keyboard Shortcuts:</strong> Native Cmd+C, Cmd+V, and F2 sales shortcuts fully supported.</li>
+                </ul>
+              </div>
+
+              {/* Linux */}
+              <div className="p-4 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
+                <div className="flex items-center gap-2 mb-2">
+                  <Monitor className="w-4 h-4 text-amber-600" />
+                  <h4 className="text-xs font-bold text-neutral-900">Linux (Ubuntu, Debian, Fedora, Arch)</h4>
+                </div>
+                <ul className="text-xs text-neutral-600 space-y-1.5 list-disc list-inside">
+                  <li><strong>Instant PWA:</strong> In Chromium/Chrome, click <em>Install KitabuPOS</em> for desktop window integration.</li>
+                  <li><strong>Native Packages:</strong> Run <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">npm run build:linux</code> to generate <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">.AppImage</code> and <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">.deb</code> packages.</li>
+                  <li><strong>Storage:</strong> Fully self-contained local SQLite storage in user data profile.</li>
+                </ul>
+              </div>
+
+              {/* Mobile: Android & iOS */}
+              <div className="p-4 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
+                <div className="flex items-center gap-2 mb-2">
+                  <Smartphone className="w-4 h-4 text-emerald-600" />
+                  <h4 className="text-xs font-bold text-neutral-900">Mobile (Android & iOS / iPadOS)</h4>
+                </div>
+                <ul className="text-xs text-neutral-600 space-y-1.5 list-disc list-inside">
+                  <li><strong>Android:</strong> Open in Chrome, tap <em>Install App</em> or <em>Add to Home screen</em>.</li>
+                  <li><strong>iPhone / iPad:</strong> Open in Safari, tap <em>Share → Add to Home Screen</em>.</li>
+                  <li><strong>Touch Layout:</strong> Responsive POS with segmented catalog/cart switcher and full-screen mobile touch targets (≥44px).</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Hardware & Peripherals Compatibility */}
+          <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-xs space-y-4">
+            <h3 className="font-bold text-sm text-neutral-900">Hardware & Peripherals Matrix</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
+                <div className="flex items-center gap-2 text-neutral-700 font-semibold text-xs mb-1">
+                  <Barcode className="w-4 h-4 text-neutral-600" />
+                  <span>Barcode Scanners</span>
+                </div>
+                <p className="text-xs text-neutral-600">
+                  Standard USB or Bluetooth scanners functioning as HID keyboard input work out-of-the-box on POS (F2).
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
+                <div className="flex items-center gap-2 text-neutral-700 font-semibold text-xs mb-1">
+                  <Printer className="w-4 h-4 text-neutral-600" />
+                  <span>Thermal Receipt Printers</span>
+                </div>
+                <p className="text-xs text-neutral-600">
+                  80mm and 58mm thermal printers (Epson, Xprinter, Rongta) via system print dialog or Windows/Mac drivers.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
+                <div className="flex items-center gap-2 text-neutral-700 font-semibold text-xs mb-1">
+                  <HardDrive className="w-4 h-4 text-neutral-600" />
+                  <span>USB Storage Drives</span>
+                </div>
+                <p className="text-xs text-neutral-600">
+                  Universal one-click binary <code className="font-mono text-[11px]">.sqlite</code> backup downloads directly to any FAT32/exFAT drive.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
