@@ -57,12 +57,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         {/* Printable Thermal Receipt Container */}
         <div className="p-6 overflow-y-auto flex-1 font-mono text-xs text-neutral-800" ref={receiptRef}>
           <div className="text-center space-y-1 mb-4 pb-3 border-b border-dashed border-neutral-300">
+            {settings?.logo_url && (
+              <img src={settings.logo_url} alt="Logo" className="w-12 h-12 mx-auto object-contain mb-1.5" />
+            )}
             <h2 className="font-bold text-sm uppercase tracking-tight text-neutral-900">
-              {settings?.shop_name || 'Kitabu Central Bookshop'}
+              {settings?.shop_name || 'Official Sales Receipt'}
             </h2>
-            <p className="text-[11px] text-neutral-500">{settings?.tagline || 'Academic & Stationery Partner'}</p>
-            <p className="text-[11px] text-neutral-500">{settings?.address || 'Biashara Street, Nairobi'}</p>
-            <p className="text-[11px] text-neutral-500">Tel: {settings?.phone || '+254 722 890 123'}</p>
+            {settings?.tagline && <p className="text-[11px] text-neutral-500">{settings.tagline}</p>}
+            {(settings?.address || settings?.county) && (
+              <p className="text-[11px] text-neutral-500">
+                {[settings.address, settings.county].filter(Boolean).join(', ')}
+              </p>
+            )}
+            {settings?.phone && <p className="text-[11px] text-neutral-500">Tel: {settings.phone}</p>}
+            {settings?.email && <p className="text-[11px] text-neutral-500">{settings.email}</p>}
             {settings?.till_number && (
               <p className="text-[11px] font-semibold text-neutral-800">
                 M-PESA TILL: {settings.till_number}

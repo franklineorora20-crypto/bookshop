@@ -2,14 +2,16 @@
   "name": "react-example",
   "private": true,
   "version": "0.0.0",
+  "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --outdir=dist-electron --external:electron",
     "preview": "vite preview",
     "test": "node --test src/utils/calculations.test.ts src/utils/csv.test.ts src/db/database.test.ts",
     "clean": "rm -rf dist dist-electron release",
-    "build:win": "vite build && electron-builder --win nsis",
+    "build:win": "npm run build && npm run build:electron && electron-builder --win nsis",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

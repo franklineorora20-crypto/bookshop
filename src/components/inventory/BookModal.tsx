@@ -30,6 +30,7 @@ export const BookModal: React.FC<BookModalProps> = ({ book, onClose, onSave }) =
   const [author, setAuthor] = useState(book?.author || '');
   const [publisher, setPublisher] = useState(book?.publisher || '');
   const [category, setCategory] = useState(book?.category || 'KCSE Set Books');
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [edition, setEdition] = useState(book?.edition || '');
   const [purchasePrice, setPurchasePrice] = useState(book?.purchase_price?.toString() || '');
   const [sellingPrice, setSellingPrice] = useState(book?.selling_price?.toString() || '');
@@ -172,35 +173,79 @@ export const BookModal: React.FC<BookModalProps> = ({ book, onClose, onSave }) =
               <input
                 type="text"
                 required
+                list="publisher-list"
                 value={publisher}
                 onChange={(e) => setPublisher(e.target.value)}
-                placeholder="e.g. Oxford University Press"
+                placeholder="e.g. Longhorn Publishers"
                 className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 focus:outline-none focus:border-neutral-900"
               />
+              <datalist id="publisher-list">
+                <option value="Longhorn Publishers" />
+                <option value="Oxford University Press" />
+                <option value="East African Educational Publishers" />
+                <option value="Kenya Literature Bureau (KLB)" />
+                <option value="Moran Publishers" />
+                <option value="Spotlight Publishers" />
+                <option value="Storymoja" />
+                <option value="Mountain Top Publishers" />
+                <option value="Kartasi Industries" />
+                <option value="Kasuku Paper" />
+                <option value="Pelican Publishers" />
+                <option value="Penguin Random House" />
+              </datalist>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">
-                Category
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 bg-white focus:outline-none focus:border-neutral-900 font-medium"
-              >
-                <option value="KCSE Set Books">KCSE Set Books</option>
-                <option value="CBC Junior School">CBC Junior School</option>
-                <option value="CBC Primary">CBC Primary</option>
-                <option value="Revision Guides">Revision Guides</option>
-                <option value="Dictionaries">Dictionaries</option>
-                <option value="Reference & Atlas">Reference & Atlas</option>
-                <option value="Stationery">Stationery</option>
-                <option value="Stationery & Electronics">Stationery & Electronics</option>
-                <option value="Religious & Fiction">Religious & Fiction</option>
-                <option value="General Reading">General Reading</option>
-              </select>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
+                  Category
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsCustomCategory(!isCustomCategory)}
+                  className="text-[10px] text-neutral-500 hover:text-neutral-900 underline"
+                >
+                  {isCustomCategory ? 'Select from list' : '+ Custom'}
+                </button>
+              </div>
+              {isCustomCategory ? (
+                <input
+                  type="text"
+                  required
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="Type custom category..."
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-300 font-medium focus:outline-none focus:border-neutral-900"
+                  autoFocus
+                />
+              ) : (
+                <select
+                  value={category}
+                  onChange={(e) => {
+                    if (e.target.value === '__custom__') {
+                      setIsCustomCategory(true);
+                      setCategory('');
+                    } else {
+                      setCategory(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 bg-white focus:outline-none focus:border-neutral-900 font-medium"
+                >
+                  <option value="KCSE Set Books">KCSE Set Books</option>
+                  <option value="CBC Junior School">CBC Junior School</option>
+                  <option value="CBC Primary">CBC Primary</option>
+                  <option value="Revision Guides">Revision Guides</option>
+                  <option value="Dictionaries">Dictionaries</option>
+                  <option value="Reference & Atlas">Reference & Atlas</option>
+                  <option value="Stationery">Stationery</option>
+                  <option value="Stationery & Electronics">Stationery & Electronics</option>
+                  <option value="Religious & Fiction">Religious & Fiction</option>
+                  <option value="General Reading">General Reading</option>
+                  <option value="__custom__">＋ Add Custom Category...</option>
+                </select>
+              )}
             </div>
             <div>
               <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1">

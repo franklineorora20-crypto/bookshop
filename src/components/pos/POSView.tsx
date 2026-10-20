@@ -22,7 +22,7 @@ import {
 import { Book, Sale, ShopSettings, User } from '../../types/index.ts';
 import { calculateCartTotals, calculateChange } from '../../utils/calculations.ts';
 import { formatKES } from '../../utils/formatters.ts';
-import { processSale } from '../../db/database.ts';
+import { processSale, getSaleById } from '../../db/database.ts';
 import { ReceiptModal } from './ReceiptModal.tsx';
 
 interface CartItem {
@@ -124,8 +124,8 @@ export const POSView: React.FC<POSViewProps> = ({
     const existingIndex = cart.findIndex((item) => item.book.id === book.id);
     const currentQtyInCart = existingIndex > -1 ? cart[existingIndex].quantity : 0;
 
-    if (currentQtyInCart + 1 > book.current_stock) {
-      toast.error(`Only ${book.current_stock} copies of "${book.title}" in stock.`);
+    if (currentQtyInCart + 1 > book.quantity) {
+      toast.error(`Only ${book.quantity} copies of "${book.title}" in stock.`);
       return;
     }
 
@@ -148,8 +148,8 @@ export const POSView: React.FC<POSViewProps> = ({
       return;
     }
 
-    if (newQty > item.book.current_stock) {
-      toast.error(`Only ${item.book.current_stock} copies available.`);
+    if (newQty > item.book.quantity) {
+      toast.error(`Only ${item.book.quantity} copies available.`);
       return;
     }
 
@@ -170,7 +170,7 @@ export const POSView: React.FC<POSViewProps> = ({
   const handleOpenCheckout = () => {
     if (cart.length === 0) return;
     setPaymentError(null);
-    setAmountTendered(totals.total.toString());
+    setAmountTendered(totals.grandTotal.toString());
     setSplitCashAmount('');
     setSplitMpesaAmount('');
     setMpesaCode('');
@@ -185,15 +185,15 @@ export const POSView: React.FC<POSViewProps> = ({
 
   // Calculate change for cash sale
   const tenderNum = parseFloat(amountTendered) || 0;
-  const changeDue = calculateChange(totals.total, tenderNum);
+  const changeDue = calculateChange(totals.grandTotal, tenderNum);
 
   // Complete Sale execution
   const handleCompleteSale = async () => {
     setPaymentError(null);
 
     if (paymentMethod === 'cash') {
-      if (tenderNum < totals.total) {
-        setPaymentError(`Cash tendered (KES ${tenderNum}) is less than total KES ${totals.total}`);
+      if (tenderNum < totals.grandTotal) {
+        setPaymentError(`Cash tendered (KES ${tenderNum}) is less than total KES ${totals.grandTotal}`);
         return;
       }
     } else if (paymentMethod === 'mpesa') {
@@ -206,8 +206,8 @@ export const POSView: React.FC<POSViewProps> = ({
     } else if (paymentMethod === 'split') {
       const c = parseFloat(splitCashAmount) || 0;
       const m = parseFloat(splitMpesaAmount) || 0;
-      if (Math.round((c + m) * 100) / 100 < totals.total) {
-        setPaymentError(`Split sum (KES ${c + m}) does not cover total KES ${totals.total}`);
+      if (Math.round((c + m) * 100) / 100 < totals.grandTotal) {
+        setPaymentError(`Split sum (KES ${c + m}) does not cover total KES ${totals.grandTotal}`);
         return;
       }
     }
@@ -215,12 +215,14 @@ export const POSView: React.FC<POSViewProps> = ({
     setIsSubmitting(true);
     try {
       const itemsPayload = cart.map((c) => ({
-        book_id: c.book.id,
+        bookId: c.book.id,
+        bookTitle: c.book.title,
+        isbn: c.book.isbn,
         quantity: c.quantity,
-        unit_price: c.book.selling_price,
-        unit_cost: c.book.purchase_price,
-        discount_amount: c.discountAmount,
-        line_total: c.book.selling_price * c.quantity - c.discountAmount,
+        unitPurchasePrice: c.book.purchase_price,
+        unitSellingPrice: c.book.selling_price,
+        discountAmount: c.discountAmount,
+        totalPrice: c.book.selling_price * c.quantity - c.discountAmount,
       }));
 
       let refString = '';
@@ -234,27 +236,34 @@ export const POSView: React.FC<POSViewProps> = ({
         }`;
       }
 
+      const totalPaid =
+        paymentMethod === 'cash'
+          ? tenderNum
+          : paymentMethod === 'split'
+          ? (parseFloat(splitCashAmount) || 0) + (parseFloat(splitMpesaAmount) || 0)
+          : totals.grandTotal;
+
+      const changeAmount = paymentMethod === 'cash' ? changeDue : 0;
+
       const salePayload = {
-        cashier_id: currentUser?.id || 1,
-        cashier_name: currentUser?.full_name || 'Cashier',
-        customer_name: customerName.trim() || undefined,
+        cashierName: currentUser?.full_name || 'Cashier',
+        customerName: customerName.trim() || undefined,
         subtotal: totals.subtotal,
-        discount_amount: totals.discountTotal,
-        tax_amount: totals.taxAmount,
-        total_amount: totals.total,
-        payment_method: paymentMethod,
-        payment_reference: refString || undefined,
-        amount_tendered:
-          paymentMethod === 'cash'
-            ? tenderNum
-            : paymentMethod === 'split'
-            ? (parseFloat(splitCashAmount) || 0) + (parseFloat(splitMpesaAmount) || 0)
-            : totals.total,
-        change_tendered: paymentMethod === 'cash' ? changeDue : 0,
-        items: itemsPayload,
+        discountTotal: totals.totalDiscount,
+        taxTotal: totals.taxTotal,
+        grandTotal: totals.grandTotal,
+        totalPaid,
+        changeAmount,
+        paymentMethod,
+        paymentReference: refString || undefined,
       };
 
-      const newSale = await processSale(salePayload);
+      const { saleId, receiptNumber } = await processSale(
+        salePayload,
+        itemsPayload,
+        currentUser?.id || 1,
+        currentUser?.full_name || 'Cashier'
+      );
 
       // Micro-confetti burst!
       confetti({
@@ -264,9 +273,12 @@ export const POSView: React.FC<POSViewProps> = ({
         colors: ['#10b981', '#0f172a', '#38bdf8'],
       });
 
-      toast.success(`Sale #${newSale.receipt_number} completed • ${formatKES(totals.total)}`);
+      toast.success(`Sale #${receiptNumber} completed • ${formatKES(totals.grandTotal)}`);
 
-      setCompletedSale(newSale);
+      const fullSale = await getSaleById(saleId);
+      if (fullSale) {
+        setCompletedSale(fullSale);
+      }
       setIsCheckoutOpen(false);
       clearCart();
       await onRefreshData();
@@ -347,7 +359,7 @@ export const POSView: React.FC<POSViewProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredBooks.map((book) => {
                 const inCart = cart.find((c) => c.book.id === book.id);
-                const isOutOfStock = book.current_stock <= 0;
+                const isOutOfStock = book.quantity <= 0;
 
                 return (
                   <button
@@ -369,12 +381,12 @@ export const POSView: React.FC<POSViewProps> = ({
                         </span>
                         <span
                           className={`text-[10px] font-mono px-1 py-0.2 rounded ${
-                            book.current_stock <= book.reorder_level
+                            book.quantity <= book.reorder_level
                               ? 'bg-amber-50 text-amber-700'
                               : 'text-neutral-400'
                           }`}
                         >
-                          {book.current_stock} left
+                          {book.quantity} left
                         </span>
                       </div>
                       <h4 className="text-xs font-semibold text-neutral-900 line-clamp-2 leading-snug group-hover:text-neutral-950">
@@ -495,15 +507,15 @@ export const POSView: React.FC<POSViewProps> = ({
               <span>Subtotal:</span>
               <span className="font-mono tabular-nums text-neutral-800">{formatKES(totals.subtotal)}</span>
             </div>
-            {totals.discountTotal > 0 && (
+            {totals.totalDiscount > 0 && (
               <div className="flex justify-between text-emerald-600">
                 <span>Discount:</span>
-                <span className="font-mono tabular-nums">−{formatKES(totals.discountTotal)}</span>
+                <span className="font-mono tabular-nums">−{formatKES(totals.totalDiscount)}</span>
               </div>
             )}
             <div className="flex justify-between text-xs font-semibold text-neutral-900 pt-1 border-t border-neutral-200">
               <span>Total Payable:</span>
-              <span className="font-mono text-base tabular-nums">{formatKES(totals.total)}</span>
+              <span className="font-mono text-base tabular-nums">{formatKES(totals.grandTotal)}</span>
             </div>
           </div>
 
@@ -548,7 +560,7 @@ export const POSView: React.FC<POSViewProps> = ({
                     Record Payment
                   </h3>
                   <p className="text-[11px] text-neutral-400">
-                    Total Due: <span className="font-mono font-medium text-neutral-900">{formatKES(totals.total)}</span>
+                    Total Due: <span className="font-mono font-medium text-neutral-900">{formatKES(totals.grandTotal)}</span>
                   </p>
                 </div>
                 <button
@@ -647,10 +659,10 @@ export const POSView: React.FC<POSViewProps> = ({
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => handleQuickTender(totals.total)}
+                        onClick={() => handleQuickTender(totals.grandTotal)}
                         className="px-2.5 py-1 text-xs rounded-md bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-mono tactile-btn"
                       >
-                        Exact ({formatKES(totals.total)})
+                        Exact ({formatKES(totals.grandTotal)})
                       </button>
                       {[500, 1000, 2000, 5000].map((amt) => (
                         <button

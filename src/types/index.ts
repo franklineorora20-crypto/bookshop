@@ -182,4 +182,8 @@ export interface ShopSettings {
   session_timeout_minutes: number;
   last_backup_at?: string;
   backup_schedule: 'daily' | 'weekly' | 'manual';
+  logo_url?: string;
+  receipt_prefix?: string;
+  default_reorder_level?: number;
+  is_setup_completed?: boolean;
 }

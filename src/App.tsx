@@ -24,6 +24,7 @@ import {
   getShopSettings,
   getLastBackupTimestamp,
 } from './db/database.ts';
+import { FirstRunWizard } from './components/setup/FirstRunWizard.tsx';
 import { getStoredSession, saveSession, hasPermission } from './services/auth.ts';
 
 export default function App() {
@@ -44,6 +45,7 @@ export default function App() {
 
   // Modal receipt preview
   const [previewReceipt, setPreviewReceipt] = useState<Sale | null>(null);
+  const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
 
   // Inactivity tracking
   const lastActivityRef = useRef<number>(Date.now());
@@ -166,6 +168,23 @@ export default function App() {
     lastActivityRef.current = Date.now();
     saveSession({ user: currentUser, isLocked: false, lastActive: Date.now() });
   };
+
+  // If first-time run and setup wizard not completed, display wizard first!
+  if (!loading && shopSettings && !shopSettings.is_setup_completed) {
+    return (
+      <FirstRunWizard
+        initialSettings={shopSettings}
+        onComplete={(adminUser, updatedSettings) => {
+          setShopSettings(updatedSettings);
+          setCurrentUser(adminUser);
+          setIsLocked(false);
+          lastActivityRef.current = Date.now();
+          saveSession({ user: adminUser, isLocked: false, lastActive: Date.now() });
+          refreshAllData();
+        }}
+      />
+    );
+  }
 
   // If not logged in, show Login Screen
   if (!currentUser) {
@@ -305,10 +324,25 @@ export default function App() {
               settings={shopSettings}
               currentUser={currentUser}
               onRefreshData={refreshAllData}
+              onOpenWizard={() => setIsWizardOpen(true)}
             />
           )}
         </main>
       </div>
+
+      {/* Rerun Setup Wizard Modal */}
+      {isWizardOpen && (
+        <FirstRunWizard
+          isRerun
+          initialSettings={shopSettings}
+          onCancel={() => setIsWizardOpen(false)}
+          onComplete={(_adminUser, updatedSettings) => {
+            setShopSettings(updatedSettings);
+            setIsWizardOpen(false);
+            refreshAllData();
+          }}
+        />
+      )}
 
       {/* Printable Receipt Preview Modal */}
       {previewReceipt && (

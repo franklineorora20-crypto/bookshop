@@ -274,7 +274,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                             {formatKES(b.selling_price)}
                           </span>
                           <span className="text-[10px] text-neutral-400">
-                            {b.current_stock} in stock
+                            {b.quantity} in stock
                           </span>
                         </div>
                       </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UploadCloud, CheckCircle, AlertCircle, FileText, ArrowRight } from 'lucide-react';
+import { X, UploadCloud, CheckCircle, AlertCircle, FileText, ArrowRight, Download } from 'lucide-react';
 import { parseBooksCSV, ParsedBookRow } from '../../utils/csv.ts';
 import { addBook } from '../../db/database.ts';
 import { formatKES } from '../../utils/formatters.ts';
@@ -28,11 +28,20 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<string>('');
 
-  const sampleCSV = `Title,Author,Publisher,Category,SellingPrice,PurchasePrice,Quantity,ReorderLevel,ISBN
-"Blossoms of the Savannah","Henry Ole Kulet","Longhorn Publishers","KCSE Set Books",550,380,30,5,"978-9966360663"
-"A Doll's House","Henrik Ibsen","East African Educational Publishers","KCSE Set Books",500,350,25,5,"978-9966258908"
-"Oxford English Dictionary 8th Edition","A.S. Hornby","Oxford University Press","Dictionaries",1600,1100,10,3,"978-0194799003"
-"Kasuku Ruled A4 Exercise Book 120p","Kasuku","Kartasi Industries","Stationery",70,45,100,20,"616110007890"`;
+  const handleDownloadTemplate = () => {
+    const templateContent = `Title,Author,Publisher,Category,SellingPrice,PurchasePrice,Quantity,ReorderLevel,ISBN,Barcode,Edition
+"Example Book Title","Author Name","Publisher Name","KCSE Set Books",650,450,20,5,"978-9966000000","","1st Edition"
+`;
+    const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'KitabuPOS_Inventory_Template.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -46,12 +55,6 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
       setParsedData(parsed);
     };
     reader.readAsText(file);
-  };
-
-  const handleLoadSample = () => {
-    setCsvText(sampleCSV);
-    const parsed = parseBooksCSV(sampleCSV);
-    setParsedData(parsed);
   };
 
   const handleImportValidRows = async () => {
@@ -123,10 +126,11 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleLoadSample}
-                className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold text-xs transition-colors"
+                onClick={handleDownloadTemplate}
+                className="px-3 py-1.5 rounded-lg border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-semibold text-xs transition-colors flex items-center gap-1.5 tactile-btn"
               >
-                Load Sample Template
+                <Download className="w-3.5 h-3.5 text-neutral-500" />
+                <span>Download Template (.csv)</span>
               </button>
               <label className="cursor-pointer px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-colors flex items-center gap-1.5">
                 <FileText className="w-4 h-4" />

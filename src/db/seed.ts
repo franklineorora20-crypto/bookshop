@@ -16,19 +16,22 @@ export async function getSeedQueries(): Promise<string[]> {
       (3, 'cashier', 'Bookshop Cashier', 'cashier', '${cashierHash}', '3456', 1, '${now}');`,
 
     `INSERT INTO shop_settings (key, value) VALUES
-      ('shop_name', 'My Bookshop & Stationers'),
-      ('tagline', 'Academic & Stationery Partner'),
-      ('phone', '+254 700 000 000'),
-      ('email', 'info@mybookshop.co.ke'),
-      ('address', 'Biashara Street'),
-      ('county', 'Nairobi, Kenya'),
+      ('shop_name', ''),
+      ('tagline', ''),
+      ('phone', ''),
+      ('email', ''),
+      ('address', ''),
+      ('county', ''),
       ('till_number', ''),
       ('paybill_number', ''),
       ('receipt_footer', 'Thank you for shopping with us! Goods once sold can be exchanged within 7 days with a valid receipt.'),
+      ('receipt_prefix', 'RCP'),
       ('currency', 'KES'),
       ('tax_rate', '0'),
       ('session_timeout_minutes', '15'),
-      ('backup_schedule', 'daily');`,
+      ('default_reorder_level', '5'),
+      ('backup_schedule', 'daily'),
+      ('is_setup_completed', 'false');`,
 
     `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at) VALUES
       (1, 'System Administrator', 'SYSTEM_INITIALIZATION', 'system', '1', 'Initial database schema and system administrator accounts initialized. Ready for genuine business records.', '${now}');`

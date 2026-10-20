@@ -668,10 +668,12 @@ export async function processSale(
       }
     }
 
-    // 2. Generate sequential receipt number
+    // 2. Generate sequential receipt number with configured prefix
     const maxIdRes = db.exec('SELECT COALESCE(MAX(id), 0) + 1 FROM sales;');
     const nextSaleId = Number(maxIdRes[0]?.values[0]?.[0] || 1);
-    const receiptNumber = `RCP-${year}-${String(nextSaleId).padStart(5, '0')}`;
+    const prefixRes = db.exec("SELECT value FROM shop_settings WHERE key = 'receipt_prefix';");
+    const prefix = (prefixRes[0]?.values[0]?.[0] as string)?.trim() || 'RCP';
+    const receiptNumber = `${prefix}-${year}-${String(nextSaleId).padStart(5, '0')}`;
 
     // 3. Insert sale header
     db.run(
@@ -909,6 +911,13 @@ export async function getSales(options?: {
   }
 
   return sales;
+}
+
+export async function getSaleById(id: number): Promise<Sale | null> {
+  const sale = await runQueryOne<Sale>('SELECT * FROM sales WHERE id = ?;', [id]);
+  if (!sale) return null;
+  sale.items = await runQuery<SaleItem>('SELECT * FROM sale_items WHERE sale_id = ?;', [id]);
+  return sale;
 }
 
 // Suppliers & Purchases
@@ -1266,8 +1275,14 @@ export async function getShopSettings(): Promise<ShopSettings> {
   const rows = await runQuery<{ key: string; value: string }>('SELECT key, value FROM shop_settings;');
   const settings: any = {};
   for (const row of rows) {
-    if (row.key === 'tax_rate' || row.key === 'session_timeout_minutes') {
+    if (
+      row.key === 'tax_rate' ||
+      row.key === 'session_timeout_minutes' ||
+      row.key === 'default_reorder_level'
+    ) {
       settings[row.key] = Number(row.value);
+    } else if (row.key === 'is_setup_completed') {
+      settings[row.key] = row.value === 'true' || row.value === '1';
     } else {
       settings[row.key] = row.value;
     }
@@ -1286,6 +1301,86 @@ export async function updateShopSettings(newSettings: Partial<ShopSettings>, use
     }
   }
   await logAudit(userId, userName, 'SETTINGS_UPDATE', 'settings', 'shop', 'Updated shop business settings and configuration.');
+}
+
+// Clean all business records (books, movements, purchases, sales, expenses, audits)
+// Always creates a safety backup before wiping
+export async function cleanBusinessDatabase(userId: number, userName: string): Promise<{ ok: boolean; backupSize: number }> {
+  const db = await getDatabase();
+  const binary = db.export();
+  const backupSize = binary.byteLength;
+
+  // Save emergency backup in browser storage
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem('kitabupos_pre_cleanup_backup', uint8ArrayToBase64(binary));
+    } catch {
+      // ignore quota limits
+    }
+  }
+
+  const now = new Date().toISOString();
+
+  db.run('BEGIN TRANSACTION;');
+  try {
+    db.run('DELETE FROM sale_items;');
+    db.run('DELETE FROM sales;');
+    db.run('DELETE FROM purchase_items;');
+    db.run('DELETE FROM purchases;');
+    db.run('DELETE FROM suppliers;');
+    db.run('DELETE FROM stock_movements;');
+    db.run('DELETE FROM books;');
+    db.run('DELETE FROM expenses;');
+    db.run('DELETE FROM audit_logs;');
+
+    db.run(
+      `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at)
+       VALUES (?, ?, 'SYSTEM_CLEAN_DATABASE', 'database', 'system', 'Demonstration/business data cleared. Empty business database ready for production.', ?);`,
+      [userId, userName, now]
+    );
+
+    db.run('COMMIT;');
+    await persistDbToStorage(db);
+    return { ok: true, backupSize };
+  } catch (err) {
+    db.run('ROLLBACK;');
+    throw err;
+  }
+}
+
+// Export Human-Readable Database JSON
+export async function exportDatabaseJson(): Promise<string> {
+  const [bList, sList, pList, smList, suppList, expList, settings, userList, logs] = await Promise.all([
+    runQuery('SELECT * FROM books;'),
+    runQuery('SELECT * FROM sales;'),
+    runQuery('SELECT * FROM purchases;'),
+    runQuery('SELECT * FROM stock_movements;'),
+    runQuery('SELECT * FROM suppliers;'),
+    runQuery('SELECT * FROM expenses;'),
+    runQuery('SELECT * FROM shop_settings;'),
+    runQuery('SELECT id, username, full_name, role, is_active, created_at FROM users;'),
+    runQuery('SELECT * FROM audit_logs LIMIT 200;'),
+  ]);
+
+  return JSON.stringify(
+    {
+      exportedAt: new Date().toISOString(),
+      system: 'KitabuPOS Offline Bookshop Management System',
+      data: {
+        settings,
+        users: userList,
+        books: bList,
+        stock_movements: smList,
+        suppliers: suppList,
+        purchases: pList,
+        sales: sList,
+        expenses: expList,
+        audit_logs: logs,
+      },
+    },
+    null,
+    2
+  );
 }
 
 // Audit Logs

@@ -281,7 +281,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {sale.items?.length || 1}
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono font-medium text-neutral-900 tabular-nums">
-                      {formatKES(sale.total_amount)}
+                      {formatKES(sale.grand_total)}
                     </td>
                     <td className="py-2.5 px-4 text-center">
                       <button

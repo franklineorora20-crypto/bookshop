@@ -157,24 +157,26 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
     }
 
     const paidNum = parseFloat(amountPaid) || 0;
+    const paymentStatus = paidNum >= totalPurchaseCost ? 'paid' : paidNum > 0 ? 'partial' : 'unpaid';
 
     try {
       await recordPurchase(
         {
-          supplier_id: Number(selectedSupplierId),
-          invoice_number: invoiceNumber.trim(),
-          total_cost: totalPurchaseCost,
-          amount_paid: paidNum,
+          supplierId: Number(selectedSupplierId),
+          invoiceNumber: invoiceNumber.trim(),
+          totalCost: totalPurchaseCost,
+          amountPaid: paidNum,
+          paymentStatus,
           status: purchaseStatus,
           notes: undefined,
-          user_id: currentUser?.id || 1,
-          items: purchaseItems.map((i) => ({
-            book_id: i.bookId,
-            quantity: i.quantity,
-            unit_cost: i.unitCost,
-            total_cost: i.quantity * i.unitCost,
-          })),
         },
+        purchaseItems.map((i) => ({
+          bookId: i.bookId,
+          bookTitle: i.bookTitle,
+          quantity: i.quantity,
+          unitCost: i.unitCost,
+          totalCost: i.quantity * i.unitCost,
+        })),
         currentUser?.id || 1,
         currentUser?.full_name || 'Admin'
       );
