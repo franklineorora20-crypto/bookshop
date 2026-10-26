@@ -83,3 +83,18 @@ export function saveSession(session: AuthSession | null): void {
     sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
   }
 }
+
+export function isDefaultPassword(password: string): boolean {
+  return password === 'admin123' || password === 'cashier123';
+}
+
+export async function changeUserPassword(userId: number, newPassword: string): Promise<void> {
+  const newHash = bcrypt.hashSync(newPassword.trim(), 8);
+  await runExecute('UPDATE users SET password_hash = ? WHERE id = ?;', [newHash, userId]);
+  const stored = getStoredSession();
+  if (stored && stored.user.id === userId) {
+    stored.user.password_hash = newHash;
+    saveSession(stored);
+  }
+}
+

@@ -1,7 +1,8 @@
-import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
+import initSqlJs from 'sql.js';
+import type { Database, SqlJsStatic } from 'sql.js';
 import { SCHEMA_SQL } from './schema.ts';
 import { getSeedQueries } from './seed.ts';
-import { Book, Expense, Sale, SaleItem, ShopSettings, StockMovement, Supplier, User } from '../types/index.ts';
+import type { Book, Expense, Sale, SaleItem, ShopSettings, StockMovement, Supplier, User } from '../types/index.ts';
 
 const DB_STORAGE_KEY = 'kitabupos_sqlite_db_v1';
 const BACKUP_TIMESTAMP_KEY = 'kitabupos_last_backup_time';
@@ -99,7 +100,7 @@ export async function getDatabase(): Promise<Database> {
     if (!SQL) {
       if (typeof window !== 'undefined') {
         SQL = await initSqlJs({
-          locateFile: () => '/sql-wasm.wasm',
+          locateFile: (file) => `/${file}`,
         });
       } else {
         SQL = await initSqlJs();
@@ -286,7 +287,7 @@ export async function getLastBackupTimestamp(): Promise<string | null> {
 // Restore Database from binary file
 export async function restoreDatabaseBinary(data: Uint8Array, adminUserId: number, adminName: string): Promise<{ ok: boolean; message: string }> {
   if (!SQL) {
-    SQL = await initSqlJs({ locateFile: () => '/sql-wasm.wasm' });
+    SQL = await initSqlJs({ locateFile: (file) => `/${file}` });
   }
 
   // 1. Safety check candidate database
@@ -350,25 +351,45 @@ export async function getDashboardMetrics(): Promise<{
   todaySalesCount: number;
   todayRevenue: number;
   todayProfit: number;
+  todayCashRevenue: number;
+  todayMpesaRevenue: number;
+  todayCardRevenue: number;
   totalInventoryCount: number;
   totalInventoryCostValue: number;
   totalInventoryRetailValue: number;
   lowStockCount: number;
   outOfStockCount: number;
   recentSales: Sale[];
+  lowStockBooks: Array<{ id: number; title: string; category: string; quantity: number; reorder_level: number; purchase_price: number }>;
+  lastBackupTime: string | null;
 }> {
   const db = await getDatabase();
-  const today = new Date().toISOString().split('T')[0];
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-  // Today sales
-  const todaySalesRes = await runQuery<{ count: number; total: number }>(
-    `SELECT COUNT(*) as count, COALESCE(SUM(grand_total), 0) as total 
+  // Today sales & payment split
+  const todaySalesRes = await runQuery<{
+    count: number;
+    total: number;
+    cashTotal: number;
+    mpesaTotal: number;
+    cardTotal: number;
+  }>(
+    `SELECT 
+      COUNT(*) as count, 
+      COALESCE(SUM(grand_total), 0) as total,
+      COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN grand_total WHEN payment_method = 'split' THEN total_paid - change_amount ELSE 0 END), 0) as cashTotal,
+      COALESCE(SUM(CASE WHEN payment_method = 'mpesa' THEN grand_total ELSE 0 END), 0) as mpesaTotal,
+      COALESCE(SUM(CASE WHEN payment_method = 'card' THEN grand_total ELSE 0 END), 0) as cardTotal
      FROM sales 
      WHERE is_voided = 0 AND created_at LIKE ?;`,
     [`${today}%`]
   );
   const todaySalesCount = todaySalesRes[0]?.count || 0;
   const todayRevenue = todaySalesRes[0]?.total || 0;
+  const todayCashRevenue = todaySalesRes[0]?.cashTotal || 0;
+  const todayMpesaRevenue = todaySalesRes[0]?.mpesaTotal || 0;
+  const todayCardRevenue = todaySalesRes[0]?.cardTotal || 0;
 
   // Today estimated COGS and profit
   const cogsRes = await runQuery<{ cogs: number }>(
@@ -399,6 +420,22 @@ export async function getDashboardMetrics(): Promise<{
      WHERE is_archived = 0;`
   );
 
+  // Low stock titles for actionable purchase order creation
+  const lowStockBooks = await runQuery<{
+    id: number;
+    title: string;
+    category: string;
+    quantity: number;
+    reorder_level: number;
+    purchase_price: number;
+  }>(
+    `SELECT id, title, category, quantity, reorder_level, purchase_price
+     FROM books
+     WHERE is_archived = 0 AND quantity <= reorder_level
+     ORDER BY quantity ASC, title ASC
+     LIMIT 8;`
+  );
+
   // Recent 6 transactions
   const recentSales = await runQuery<Sale>(
     `SELECT id, receipt_number, cashier_name, customer_name, grand_total, payment_method, is_voided, created_at
@@ -407,16 +444,23 @@ export async function getDashboardMetrics(): Promise<{
      LIMIT 6;`
   );
 
+  const lastBackupTime = await getLastBackupTimestamp();
+
   return {
     todaySalesCount,
     todayRevenue,
     todayProfit,
+    todayCashRevenue,
+    todayMpesaRevenue,
+    todayCardRevenue,
     totalInventoryCount: invRes[0]?.totalQty || 0,
     totalInventoryCostValue: Math.round((invRes[0]?.costVal || 0) * 100) / 100,
     totalInventoryRetailValue: Math.round((invRes[0]?.retailVal || 0) * 100) / 100,
     lowStockCount: invRes[0]?.lowStock || 0,
     outOfStockCount: invRes[0]?.outStock || 0,
     recentSales,
+    lowStockBooks,
+    lastBackupTime,
   };
 }
 
@@ -559,6 +603,20 @@ export async function archiveBook(id: number, userId: number, userName: string):
   const current = await runQueryOne<Book>('SELECT title FROM books WHERE id = ?', [id]);
   await runExecute('UPDATE books SET is_archived = 1 WHERE id = ?;', [id]);
   await logAudit(userId, userName, 'BOOK_ARCHIVE', 'book', id, `Archived book "${current?.title}".`);
+}
+
+export async function bulkArchiveBooks(ids: number[], userId: number, userName: string): Promise<void> {
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => '?').join(',');
+  await runExecute(`UPDATE books SET is_archived = 1 WHERE id IN (${placeholders});`, ids);
+  await logAudit(userId, userName, 'BOOK_BULK_ARCHIVE', 'book', ids.length, `Archived ${ids.length} book titles.`);
+}
+
+export async function bulkUpdateCategory(ids: number[], newCategory: string, userId: number, userName: string): Promise<void> {
+  if (ids.length === 0 || !newCategory.trim()) return;
+  const placeholders = ids.map(() => '?').join(',');
+  await runExecute(`UPDATE books SET category = ? WHERE id IN (${placeholders});`, [newCategory.trim(), ...ids]);
+  await logAudit(userId, userName, 'BOOK_BULK_CATEGORY', 'book', ids.length, `Updated category to "${newCategory.trim()}" for ${ids.length} books.`);
 }
 
 // Stock Adjustment
@@ -860,18 +918,6 @@ export async function voidSale(
       saleId,
       `Voided sale #${receiptNumber} (KES ${grandTotal.toFixed(2)}). Reason: ${reason}. Inventory restocked.`
     );
-
-    db.run('COMMIT;');
-    await persistDbToStorage(db);
-
-    await logAudit(
-      userId,
-      userName,
-      'SALE_VOID',
-      'sale',
-      saleId,
-      `Voided sale #${receiptNumber} (KES ${grandTotal.toFixed(2)}). Reason: ${reason}. Inventory restocked.`
-    );
   } catch (error) {
     db.run('ROLLBACK;');
     throw error;
@@ -926,6 +972,16 @@ export async function getSales(options?: {
   }
 
   return sales;
+}
+
+export async function checkMpesaReferenceUsed(reference: string): Promise<boolean> {
+  const cleanRef = reference.trim();
+  if (!cleanRef) return false;
+  const res = await runQueryOne(
+    'SELECT id FROM sales WHERE UPPER(payment_reference) = UPPER(?) AND is_voided = 0 LIMIT 1;',
+    [cleanRef]
+  );
+  return Boolean(res);
 }
 
 export async function getSaleById(id: number): Promise<Sale | null> {
@@ -1079,6 +1135,92 @@ export async function getPurchases(): Promise<any[]> {
     p.items = await runQuery('SELECT * FROM purchase_items WHERE purchase_id = ?', [p.id]);
   }
   return purchases;
+}
+
+export async function receivePendingPurchase(
+  purchaseId: number,
+  userId: number,
+  userName: string
+): Promise<void> {
+  const db = await getDatabase();
+  const now = new Date().toISOString();
+
+  db.run('BEGIN TRANSACTION;');
+  try {
+    const pRes = db.exec(`SELECT status, invoice_number FROM purchases WHERE id = ${purchaseId};`);
+    if (!pRes[0] || pRes[0].values.length === 0) throw new Error('Purchase order not found');
+    if (pRes[0].values[0][0] === 'received') throw new Error('Purchase order is already received');
+    const invoiceNumber = pRes[0].values[0][1] as string;
+
+    const itemsRes = db.exec(`SELECT book_id, quantity, unit_cost FROM purchase_items WHERE purchase_id = ${purchaseId};`);
+    if (itemsRes[0]) {
+      for (const row of itemsRes[0].values) {
+        const bookId = Number(row[0]);
+        const quantity = Number(row[1]);
+        const unitCost = Number(row[2]);
+
+        const bookRes = db.exec(`SELECT quantity FROM books WHERE id = ${bookId};`);
+        const prevQty = Number(bookRes[0]?.values[0]?.[0] || 0);
+        const newQty = prevQty + quantity;
+
+        db.run(`UPDATE books SET quantity = ?, purchase_price = ?, updated_at = ? WHERE id = ?;`, [newQty, unitCost, now, bookId]);
+        db.run(
+          `INSERT INTO stock_movements (book_id, movement_type, quantity_change, previous_quantity, new_quantity, unit_cost, reference_type, reference_id, notes, user_id, created_at)
+           VALUES (?, 'purchase', ?, ?, ?, ?, 'purchase', ?, ?, ?, ?);`,
+          [bookId, quantity, prevQty, newQty, unitCost, String(purchaseId), `Goods Received (Inv: ${invoiceNumber})`, userId, now]
+        );
+      }
+    }
+
+    db.run(`UPDATE purchases SET status = 'received', received_at = ? WHERE id = ?;`, [now, purchaseId]);
+    db.run('COMMIT;');
+    await persistDbToStorage(db);
+
+    await logAudit(userId, userName, 'PURCHASE_RECEIVE', 'purchase', purchaseId, `Received pending purchase order #${invoiceNumber} into inventory.`);
+  } catch (error) {
+    db.run('ROLLBACK;');
+    throw error;
+  }
+}
+
+export async function recordSupplierPayment(
+  purchaseId: number,
+  paymentAmount: number,
+  userId: number,
+  userName: string
+): Promise<void> {
+  const db = await getDatabase();
+
+  db.run('BEGIN TRANSACTION;');
+  try {
+    const pRes = db.exec(`SELECT supplier_id, total_cost, amount_paid, invoice_number FROM purchases WHERE id = ${purchaseId};`);
+    if (!pRes[0] || pRes[0].values.length === 0) throw new Error('Purchase order not found');
+    const supplierId = Number(pRes[0].values[0][0]);
+    const totalCost = Number(pRes[0].values[0][1]);
+    const currentPaid = Number(pRes[0].values[0][2]);
+    const invoiceNumber = pRes[0].values[0][3] as string;
+
+    const newPaid = Math.min(totalCost, currentPaid + paymentAmount);
+    const newStatus = newPaid >= totalCost ? 'paid' : 'partial';
+
+    db.run(`UPDATE purchases SET amount_paid = ?, payment_status = ? WHERE id = ?;`, [newPaid, newStatus, purchaseId]);
+    db.run(`UPDATE suppliers SET balance = MAX(0, balance - ?) WHERE id = ?;`, [paymentAmount, supplierId]);
+
+    db.run('COMMIT;');
+    await persistDbToStorage(db);
+
+    await logAudit(
+      userId,
+      userName,
+      'SUPPLIER_PAYMENT',
+      'purchase',
+      purchaseId,
+      `Recorded supplier payment of KES ${paymentAmount.toFixed(2)} for invoice #${invoiceNumber}. Status: ${newStatus}.`
+    );
+  } catch (error) {
+    db.run('ROLLBACK;');
+    throw error;
+  }
 }
 
 // Expenses
@@ -1235,6 +1377,103 @@ export async function getTopSellingBooks(limit = 10, startDate?: string, endDate
   return runQuery(sql, params);
 }
 
+export interface CashUpReport {
+  date: string;
+  cashierId?: number;
+  cashierName: string;
+  totalTransactions: number;
+  grossSales: number;
+  cashSales: number;
+  mpesaSales: number;
+  cardSales: number;
+  voidedCount: number;
+  voidedTotal: number;
+  cashExpenses: number;
+}
+
+export async function getCashUpReport(date: string, cashierId?: number): Promise<CashUpReport> {
+  let userClause = '';
+  const params: any[] = [date];
+  if (cashierId) {
+    userClause = ' AND user_id = ?';
+    params.push(cashierId);
+  }
+
+  const sales = await runQuery<Sale>(
+    `SELECT * FROM sales WHERE substr(created_at, 1, 10) = ? ${userClause};`,
+    params
+  );
+
+  let totalTransactions = 0;
+  let grossSales = 0;
+  let cashSales = 0;
+  let mpesaSales = 0;
+  let cardSales = 0;
+  let voidedCount = 0;
+  let voidedTotal = 0;
+
+  for (const s of sales) {
+    if (s.is_voided) {
+      voidedCount++;
+      voidedTotal += s.grand_total;
+      continue;
+    }
+    totalTransactions++;
+    grossSales += s.grand_total;
+    if (s.payment_method === 'cash') {
+      cashSales += s.grand_total;
+    } else if (s.payment_method === 'mpesa') {
+      mpesaSales += s.grand_total;
+    } else if (s.payment_method === 'card') {
+      cardSales += s.grand_total;
+    } else if (s.payment_method === 'split') {
+      try {
+        const split = s.payment_reference ? JSON.parse(s.payment_reference) : null;
+        if (split) {
+          cashSales += Number(split.cash) || 0;
+          mpesaSales += Number(split.mpesa) || 0;
+        } else {
+          cashSales += s.grand_total;
+        }
+      } catch {
+        cashSales += s.grand_total;
+      }
+    }
+  }
+
+  const expParams: any[] = [date];
+  let expUserClause = '';
+  if (cashierId) {
+    expUserClause = ' AND user_id = ?';
+    expParams.push(cashierId);
+  }
+  const expRes = await runQuery<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE date = ? ${expUserClause};`,
+    expParams
+  );
+  const cashExpenses = expRes[0]?.total || 0;
+
+  let cashierName = 'All Cashiers';
+  if (cashierId) {
+    const userRes = await runQueryOne<{ full_name: string }>('SELECT full_name FROM users WHERE id = ?;', [cashierId]);
+    if (userRes) cashierName = userRes.full_name;
+  }
+
+  return {
+    date,
+    cashierId,
+    cashierName,
+    totalTransactions,
+    grossSales: Math.round(grossSales * 100) / 100,
+    cashSales: Math.round(cashSales * 100) / 100,
+    mpesaSales: Math.round(mpesaSales * 100) / 100,
+    cardSales: Math.round(cardSales * 100) / 100,
+    voidedCount,
+    voidedTotal: Math.round(voidedTotal * 100) / 100,
+    cashExpenses: Math.round(cashExpenses * 100) / 100,
+  };
+}
+
 // Users
 export async function getUsers(): Promise<User[]> {
   return runQuery<User>('SELECT id, username, full_name, role, pin, is_active, created_at, last_login FROM users ORDER BY id ASC;');
@@ -1323,15 +1562,46 @@ export async function updateShopSettings(newSettings: Partial<ShopSettings>, use
 export async function cleanBusinessDatabase(userId: number, userName: string): Promise<{ ok: boolean; backupSize: number }> {
   const db = await getDatabase();
   const binary = db.export();
-  const backupSize = binary.byteLength;
+  const backupSize = binary?.byteLength || 0;
 
-  // Save emergency backup in browser storage
+  if (!binary || backupSize === 0) {
+    throw new Error('Safety backup failed: exported binary is empty. Aborting database cleanup to prevent data loss.');
+  }
+
+  // Save emergency safety backup in IndexedDB and/or localStorage
+  let backupSaved = false;
+  let backupError: any = null;
+
+  try {
+    if (typeof window !== 'undefined' && window.indexedDB) {
+      const idb = await openIDB();
+      await new Promise<void>((resolve, reject) => {
+        const tx = idb.transaction('sqlite', 'readwrite');
+        const store = tx.objectStore('sqlite');
+        const req = store.put(binary, 'pre_cleanup_safety_backup');
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+      backupSaved = true;
+    }
+  } catch (err) {
+    backupError = err;
+  }
+
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem('kitabupos_pre_cleanup_backup', uint8ArrayToBase64(binary));
-    } catch {
-      // ignore quota limits
+      backupSaved = true;
+    } catch (err) {
+      if (!backupSaved) {
+        backupError = err;
+      }
     }
+  }
+
+  // If running in a browser and no backup could be written, strictly abort!
+  if (typeof window !== 'undefined' && !backupSaved) {
+    throw new Error(`Safety backup failed: ${backupError?.message || 'Local storage write error'}. Aborting database cleanup to prevent data loss.`);
   }
 
   const now = new Date().toISOString();

@@ -315,6 +315,7 @@ export default function App() {
             <ReportsView
               books={books}
               currentUser={currentUser}
+              settings={shopSettings}
               onRefreshData={refreshAllData}
             />
           )}

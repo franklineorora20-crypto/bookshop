@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import {
   HardDrive,
   ShieldCheck,
@@ -7,7 +8,6 @@ import {
   AlertTriangle,
   Building2,
   CheckCircle,
-  Sparkles,
   FileText,
   Trash2,
   RefreshCw,
@@ -18,15 +18,17 @@ import {
   Sliders,
   DollarSign,
   Receipt,
-  Laptop,
-  Smartphone,
   Printer,
   Barcode,
-  CheckCircle2,
-  Monitor,
-  Globe,
+  Search,
+  Lock,
+  Database,
+  Wrench,
+  CreditCard,
+  Smartphone,
+  Info,
 } from 'lucide-react';
-import { ShopSettings, User } from '../../types/index.ts';
+import type { ShopSettings, User } from '../../types/index.ts';
 import {
   checkDatabaseIntegrity,
   exportDatabaseBinary,
@@ -37,8 +39,12 @@ import {
   getAuditLogs,
   cleanBusinessDatabase,
 } from '../../db/database.ts';
-import { formatDateTime } from '../../utils/formatters.ts';
-import { PWAInstallButton } from '../common/PWAInstallButton.tsx';
+import { formatDateTime, formatKES } from '../../utils/formatters.ts';
+import { Button } from '../common/Button.tsx';
+import { Input } from '../common/Input.tsx';
+import { Modal } from '../common/Modal.tsx';
+import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
+import { StatusBadge } from '../common/StatusBadge.tsx';
 
 interface SettingsViewProps {
   settings: ShopSettings | null;
@@ -53,9 +59,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onRefreshData,
   onOpenWizard,
 }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'backup' | 'audit' | 'device'>('profile');
+  const [activeTab, setActiveTab] = useState<
+    'shop' | 'receipt' | 'payments' | 'security' | 'backup' | 'maintenance'
+  >('shop');
 
-  // Profile Form state
+  // Shop Profile state
   const [shopName, setShopName] = useState(settings?.shop_name || '');
   const [tagline, setTagline] = useState(settings?.tagline || '');
   const [logoUrl, setLogoUrl] = useState(settings?.logo_url || '');
@@ -64,35 +72,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [address, setAddress] = useState(settings?.address || '');
   const [county, setCounty] = useState(settings?.county || 'Nairobi, Kenya');
   const [currency, setCurrency] = useState(settings?.currency || 'KES');
-  const [receiptPrefix, setReceiptPrefix] = useState(settings?.receipt_prefix || 'RCP');
-  const [tillNumber, setTillNumber] = useState(settings?.till_number || '');
-  const [paybillNumber, setPaybillNumber] = useState(settings?.paybill_number || '');
-  const [receiptFooter, setReceiptFooter] = useState(settings?.receipt_footer || '');
-  const [taxRate, setTaxRate] = useState(settings?.tax_rate?.toString() || '0');
   const [defaultReorderLevel, setDefaultReorderLevel] = useState(
     settings?.default_reorder_level?.toString() || '5'
   );
+
+  // Receipt Settings state
+  const [receiptPrefix, setReceiptPrefix] = useState(settings?.receipt_prefix || 'RCP');
+  const [receiptFooter, setReceiptFooter] = useState(
+    settings?.receipt_footer ||
+      'Thank you for shopping with us! Books once sold can be exchanged within 7 days with a valid receipt.'
+  );
+  const [taxRate, setTaxRate] = useState(settings?.tax_rate?.toString() || '0');
+
+  // Payments & M-Pesa state
+  const [tillNumber, setTillNumber] = useState(settings?.till_number || '');
+  const [paybillNumber, setPaybillNumber] = useState(settings?.paybill_number || '');
+
+  // Security state
   const [sessionTimeout, setSessionTimeout] = useState(
     settings?.session_timeout_minutes?.toString() || '15'
   );
-  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Backup & Integrity state
   const [integrityStatus, setIntegrityStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [isCheckingIntegrity, setIsCheckingIntegrity] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
-  const [restoreMessage, setRestoreMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pendingRestoreFile, setPendingRestoreFile] = useState<File | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // Data Clean Modal state
   const [isCleanModalOpen, setIsCleanModalOpen] = useState(false);
   const [cleanConfirmText, setCleanConfirmText] = useState('');
   const [isCleaning, setIsCleaning] = useState(false);
-  const [cleanResult, setCleanResult] = useState<string | null>(null);
 
   // Audit Logs state
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [auditSearch, setAuditSearch] = useState('');
+
+  // Saving state
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -125,76 +144,86 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setAuditLogs(logs);
     } catch (e) {
       console.error(e);
+      toast.error('Failed to load audit logs');
     } finally {
       setLoadingAudit(false);
     }
   };
 
   useEffect(() => {
-    if (activeTab === 'audit') {
+    if (activeTab === 'security') {
       loadAuditLogs();
     }
   }, [activeTab]);
 
-  // Logo upload handler
+  const handleSaveAllSettings = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsSaving(true);
+    try {
+      await updateShopSettings(
+        {
+          shop_name: shopName.trim(),
+          tagline: tagline.trim(),
+          logo_url: logoUrl.trim() || undefined,
+          phone: phone.trim(),
+          email: email.trim(),
+          address: address.trim(),
+          county: county.trim(),
+          currency: currency.trim() || 'KES',
+          receipt_prefix: receiptPrefix.trim() || 'RCP',
+          till_number: tillNumber.trim(),
+          paybill_number: paybillNumber.trim(),
+          receipt_footer: receiptFooter.trim(),
+          tax_rate: parseFloat(taxRate) || 0,
+          default_reorder_level: parseInt(defaultReorderLevel, 10) || 5,
+          session_timeout_minutes: parseInt(sessionTimeout, 10) || 15,
+        },
+        currentUser?.id || 1,
+        currentUser?.full_name || 'Admin'
+      );
+      toast.success('Shop settings saved successfully!');
+      await onRefreshData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save settings');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (file.size > 1024 * 1024) {
-      alert('Logo image must be smaller than 1MB.');
+    if (file.size > 500 * 1024) {
+      toast.error('Logo image must be smaller than 500 KB');
       return;
     }
-
     const reader = new FileReader();
     reader.onload = (event) => {
-      setLogoUrl(event.target?.result as string);
+      setLogoUrl((event.target?.result as string) || '');
+      toast.success('Logo loaded! Click Save to apply.');
     };
     reader.readAsDataURL(file);
-  };
-
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await updateShopSettings(
-      {
-        shop_name: shopName.trim(),
-        tagline: tagline.trim(),
-        logo_url: logoUrl || undefined,
-        phone: phone.trim(),
-        email: email.trim(),
-        address: address.trim(),
-        county: county.trim(),
-        currency: currency.trim() || 'KES',
-        receipt_prefix: receiptPrefix.trim().toUpperCase() || 'RCP',
-        till_number: tillNumber.trim(),
-        paybill_number: paybillNumber.trim(),
-        receipt_footer: receiptFooter.trim(),
-        tax_rate: parseFloat(taxRate) || 0,
-        default_reorder_level: parseInt(defaultReorderLevel, 10) || 5,
-        session_timeout_minutes: parseInt(sessionTimeout, 10) || 15,
-      },
-      currentUser?.id || 1,
-      currentUser?.full_name || 'Admin'
-    );
-
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-    await onRefreshData();
   };
 
   const handleRunIntegrityCheck = async () => {
     setIsCheckingIntegrity(true);
     try {
-      const result = await checkDatabaseIntegrity();
-      setIntegrityStatus(result);
-    } catch (err: any) {
-      setIntegrityStatus({ ok: false, message: err.message });
+      const res = await checkDatabaseIntegrity();
+      setIntegrityStatus(res);
+      if (res.ok) {
+        toast.success('SQLite integrity check passed with zero errors!');
+      } else {
+        toast.error(`Database issue detected: ${res.message}`);
+      }
+    } catch (e: any) {
+      setIntegrityStatus({ ok: false, message: e.message });
+      toast.error(e.message);
     } finally {
       setIsCheckingIntegrity(false);
     }
   };
 
-  const handleCreateBinaryBackup = async () => {
+  const handleDownloadBinaryBackup = async () => {
     try {
       const binary = await exportDatabaseBinary();
       const d = new Date().toISOString().replace(/[:.]/g, '-');
@@ -212,8 +241,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       const ts = await getLastBackupTimestamp();
       setLastBackup(ts);
+      toast.success('SQLite database backup file downloaded successfully!');
     } catch (err: any) {
-      alert(`Backup failed: ${err.message}`);
+      toast.error(`Backup failed: ${err.message}`);
     }
   };
 
@@ -232,45 +262,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+
+      toast.success('Full shop JSON export downloaded!');
     } catch (err: any) {
-      alert(`JSON export failed: ${err.message}`);
+      toast.error(`JSON export failed: ${err.message}`);
     }
   };
 
-  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleConfirmRestore = async () => {
+    if (!pendingRestoreFile) return;
 
-    if (
-      !confirm(
-        `DANGER: Restoring a database will replace the current active inventory, sales, and accounts with records from "${file.name}".\n\nA safety pre-restore backup will be created automatically.\n\nDo you wish to proceed?`
-      )
-    ) {
-      e.target.value = '';
-      return;
-    }
-
+    setIsRestoring(true);
     const reader = new FileReader();
     reader.onload = async (event) => {
-      const buffer = event.target?.result as ArrayBuffer;
-      const uint8 = new Uint8Array(buffer);
-      const res = await restoreDatabaseBinary(
-        uint8,
-        currentUser?.id || 1,
-        currentUser?.full_name || 'Admin'
-      );
-      if (res.ok) {
-        setRestoreMessage({ ok: true, text: res.message });
-        await onRefreshData();
-      } else {
-        setRestoreMessage({ ok: false, text: res.message });
+      try {
+        const buffer = event.target?.result as ArrayBuffer;
+        const uint8 = new Uint8Array(buffer);
+        const res = await restoreDatabaseBinary(
+          uint8,
+          currentUser?.id || 1,
+          currentUser?.full_name || 'Admin'
+        );
+        if (res.ok) {
+          toast.success('Database restored successfully! Data reloaded.');
+          setPendingRestoreFile(null);
+          await onRefreshData();
+        } else {
+          toast.error(res.message);
+        }
+      } catch (err: any) {
+        toast.error(`Restore failed: ${err.message}`);
+      } finally {
+        setIsRestoring(false);
       }
     };
-    reader.readAsArrayBuffer(file);
+    reader.readAsArrayBuffer(pendingRestoreFile);
   };
 
   const handleExecuteCleanData = async () => {
-    if (cleanConfirmText !== 'CLEAN') return;
+    if (cleanConfirmText !== 'CONFIRM') return;
 
     setIsCleaning(true);
     try {
@@ -278,16 +308,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         currentUser?.id || 1,
         currentUser?.full_name || 'Admin'
       );
-      setCleanResult(
-        `Business records cleared successfully! An emergency safety backup (${Math.round(
+      toast.success(
+        `Business records cleared! Safety backup (${Math.round(
           res.backupSize / 1024
-        )} KB) was automatically saved. Your store is now pristine and empty.`
+        )} KB) was saved.`
       );
       setIsCleanModalOpen(false);
       setCleanConfirmText('');
       await onRefreshData();
     } catch (err: any) {
-      alert('Cleaning error: ' + err.message);
+      toast.error('Cleaning aborted: ' + err.message);
     } finally {
       setIsCleaning(false);
     }
@@ -298,780 +328,762 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const q = auditSearch.toLowerCase();
     return (
       log.action?.toLowerCase().includes(q) ||
-      log.details?.toLowerCase().includes(q) ||
       log.user_name?.toLowerCase().includes(q) ||
-      log.entity?.toLowerCase().includes(q)
+      log.details?.toLowerCase().includes(q)
     );
   });
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Top Banner with Guided Setup Launcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-xl bg-white border border-neutral-200 shadow-xs">
+      {/* Top Header & Save Button */}
+      <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-500">
-              System Administration
-            </span>
-          </div>
-          <h2 className="text-lg font-semibold tracking-tight text-neutral-900 mt-0.5">
-            Settings, Receipts & Backups
-          </h2>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            Configure your store identity, thermal receipt layout, SQLite backups, and data cleanup.
+          <h2 className="text-lg font-bold text-neutral-900">System & Shop Settings</h2>
+          <p className="text-sm text-neutral-500">
+            Configure business identity, receipts, M-Pesa till, database backups, and security.
           </p>
         </div>
 
-        {onOpenWizard && (
-          <button
-            type="button"
-            onClick={onOpenWizard}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs transition-colors tactile-btn shrink-0"
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="primary"
+            onClick={() => handleSaveAllSettings()}
+            loading={isSaving}
+            className="min-h-[44px]"
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Launch Store Setup Wizard</span>
-          </button>
-        )}
-      </div>
-
-      {cleanResult && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{cleanResult}</span>
-          </div>
-          <button
-            onClick={() => setCleanResult(null)}
-            className="text-xs font-semibold text-emerald-700 hover:text-emerald-900"
-          >
-            Dismiss
-          </button>
+            <CheckCircle className="w-4 h-4" />
+            <span>Save Settings</span>
+          </Button>
         </div>
-      )}
-
-      {/* Top Tabs */}
-      <div className="flex border-b border-neutral-200 gap-4 text-xs font-bold overflow-x-auto pb-px scrollbar-none">
-        {[
-          { id: 'profile', label: 'Store Profile & Receipts' },
-          { id: 'backup', label: 'Database Backup & Integrity' },
-          { id: 'audit', label: 'System Audit Logs' },
-          { id: 'device', label: 'Cross-Platform & Install' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`pb-2.5 transition-colors border-b-2 whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'border-neutral-900 text-neutral-900'
-                : 'border-transparent text-neutral-500 hover:text-neutral-800'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
       </div>
 
-      {/* Tab 1: Profile & Receipts */}
-      {activeTab === 'profile' && (
-        <form onSubmit={handleSaveProfile} className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-xs space-y-6 max-w-3xl">
-          <div className="border-b border-neutral-100 pb-3 flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-sm text-neutral-900">Bookshop Profile & Receipt Header</h3>
-              <p className="text-xs text-neutral-500">Information printed on customer sales receipts and delivery invoices.</p>
-            </div>
-            {saveSuccess && (
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg flex items-center gap-1 border border-emerald-200">
-                <CheckCircle className="w-3.5 h-3.5" /> Saved!
-              </span>
-            )}
+      {/* Tabs Navigation */}
+      <div className="flex rounded-lg bg-neutral-100 p-1 text-sm font-medium overflow-x-auto">
+        {[
+          { id: 'shop', label: 'Shop Profile', icon: Building2 },
+          { id: 'receipt', label: 'Receipt Customization', icon: Receipt },
+          { id: 'payments', label: 'Payments & M-Pesa', icon: Smartphone },
+          { id: 'security', label: 'Security & Audits', icon: ShieldCheck },
+          { id: 'backup', label: 'Database Backup', icon: Database },
+          { id: 'maintenance', label: 'Data & Maintenance', icon: Wrench },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`min-h-[40px] px-4 py-2 rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'bg-white text-neutral-900 shadow-xs font-semibold'
+                  : 'text-neutral-600 hover:text-neutral-900'
+              }`}
+            >
+              <Icon className="w-4 h-4 text-neutral-500" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* TAB 1: Shop Profile */}
+      {activeTab === 'shop' && (
+        <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-5 max-w-3xl">
+          <h3 className="font-bold text-base text-neutral-900 pb-3 border-b border-neutral-100 flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-neutral-700" />
+            <span>Bookshop Identity</span>
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Shop Legal / Trade Name *"
+              required
+              placeholder="e.g. Kitabu House Bookshop"
+              value={shopName}
+              onChange={(e) => setShopName(e.target.value)}
+            />
+            <Input
+              label="Tagline / Motto"
+              placeholder="e.g. Your Partner in Educational Excellence"
+              value={tagline}
+              onChange={(e) => setTagline(e.target.value)}
+            />
           </div>
 
-          {/* Store Logo Section */}
-          <div>
-            <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
-              Store Logo (Printed on thermal receipts)
-            </label>
-            <div className="flex items-center gap-4">
-              {logoUrl ? (
-                <div className="relative w-16 h-16 rounded-xl border border-neutral-200 bg-neutral-50 p-1 flex items-center justify-center shrink-0">
-                  <img src={logoUrl} alt="Logo" className="w-full h-full object-contain rounded-lg" />
-                  <button
-                    type="button"
-                    onClick={() => setLogoUrl('')}
-                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-neutral-900 text-white text-[10px] flex items-center justify-center hover:bg-rose-600"
-                  >
-                    ×
-                  </button>
-                </div>
-              ) : (
-                <div className="w-16 h-16 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 flex items-center justify-center text-neutral-400 shrink-0">
-                  <Building2 className="w-6 h-6" />
-                </div>
-              )}
-              <div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  id="settings-logo-input"
-                  onChange={handleLogoUpload}
-                  className="hidden"
-                />
-                <label
-                  htmlFor="settings-logo-input"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 cursor-pointer shadow-xs tactile-btn"
-                >
-                  <Upload className="w-3.5 h-3.5 text-neutral-500" />
-                  <span>{logoUrl ? 'Change Logo' : 'Upload Store Logo'}</span>
-                </label>
-                <p className="text-[11px] text-neutral-400 mt-1">PNG or JPG up to 1MB.</p>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Phone Number (for receipts & inquiries) *"
+              required
+              placeholder="+254 712 345 678"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            <Input
+              label="Official Email Address"
+              type="email"
+              placeholder="info@kitabuhouse.co.ke"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">Bookshop Business Name *</label>
-              <input
-                type="text"
-                required
-                value={shopName}
-                onChange={(e) => setShopName(e.target.value)}
-                placeholder="e.g. Prestige Bookshop & Stationers"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 font-bold text-neutral-900 focus:outline-none focus:border-neutral-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">Tagline / Motto</label>
-              <input
-                type="text"
-                value={tagline}
-                onChange={(e) => setTagline(e.target.value)}
-                placeholder="e.g. Your Academic Partner"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:border-neutral-900"
-              />
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Physical Shop Location / Street Address"
+              placeholder="e.g. Moi Avenue, Bihi Towers 1st Floor"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+            <Input
+              label="County / City"
+              placeholder="e.g. Nairobi, Kenya"
+              value={county}
+              onChange={(e) => setCounty(e.target.value)}
+            />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-neutral-100">
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1 flex items-center gap-1">
-                <Phone className="w-3.5 h-3.5 text-neutral-400" /> Telephone / Mobile Number
-              </label>
-              <input
-                type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="e.g. +254 700 000 000"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:border-neutral-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1 flex items-center gap-1">
-                <Mail className="w-3.5 h-3.5 text-neutral-400" /> Business Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. info@bookshop.co.ke"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:border-neutral-900"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1 flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-neutral-400" /> Physical Street Address
-              </label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="e.g. Biashara Street, Shop 4"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:border-neutral-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">Town / County / Region</label>
-              <input
-                type="text"
-                value={county}
-                onChange={(e) => setCounty(e.target.value)}
-                placeholder="e.g. Nairobi, Kenya"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:border-neutral-900"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-neutral-100">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">Currency Code</label>
-              <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white font-medium"
-              >
-                <option value="KES">KES - Kenyan Shilling</option>
-                <option value="USD">USD - US Dollar</option>
-                <option value="EUR">EUR - Euro</option>
-                <option value="GBP">GBP - British Pound</option>
-                <option value="TZS">TZS - Tanzanian Shilling</option>
-                <option value="UGX">UGX - Ugandan Shilling</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">Receipt Prefix</label>
-              <input
-                type="text"
-                value={receiptPrefix}
-                onChange={(e) => setReceiptPrefix(e.target.value.toUpperCase())}
-                placeholder="e.g. RCP"
-                className="w-full px-3 py-2 font-mono text-xs uppercase font-medium rounded-xl border border-neutral-300"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1 flex items-center gap-1">
-                <Percent className="w-3.5 h-3.5 text-neutral-400" /> Default VAT Rate (%)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={taxRate}
-                onChange={(e) => setTaxRate(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                M-Pesa Buy Goods (Till Number)
-              </label>
-              <input
-                type="text"
-                value={tillNumber}
-                onChange={(e) => setTillNumber(e.target.value)}
-                placeholder="e.g. 524123"
-                className="w-full px-3 py-2 font-mono text-xs rounded-xl border border-neutral-300"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                M-Pesa Paybill Number / Account
-              </label>
-              <input
-                type="text"
-                value={paybillNumber}
-                onChange={(e) => setPaybillNumber(e.target.value)}
-                placeholder="e.g. 400200"
-                className="w-full px-3 py-2 font-mono text-xs rounded-xl border border-neutral-300"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1 flex items-center gap-1">
-                <Sliders className="w-3.5 h-3.5 text-neutral-400" /> Default Reorder Level (Units)
+              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+                Default Low Stock Alert Threshold
               </label>
               <input
                 type="number"
                 min="1"
                 value={defaultReorderLevel}
                 onChange={(e) => setDefaultReorderLevel(e.target.value)}
-                className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-neutral-300"
+                className="w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200 bg-white focus:border-neutral-900"
               />
+              <p className="text-xs text-neutral-500 mt-1">
+                Books with stock below this number are highlighted on the POS and dashboard.
+              </p>
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Inactivity Lock Timeout
+              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+                Base Currency Code
               </label>
-              <select
-                value={sessionTimeout}
-                onChange={(e) => setSessionTimeout(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white"
-              >
-                <option value="5">5 Minutes</option>
-                <option value="10">10 Minutes</option>
-                <option value="15">15 Minutes (Recommended)</option>
-                <option value="30">30 Minutes</option>
-                <option value="60">60 Minutes</option>
-              </select>
+              <input
+                type="text"
+                disabled
+                value={currency}
+                className="w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200 bg-neutral-100 text-neutral-600 font-mono font-bold"
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                Kenyan Shillings (KES) is the standard currency.
+              </p>
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-neutral-700 mb-1">
-              Receipt Footer Return Policy / Message
+          {/* Logo upload */}
+          <div className="pt-3 border-t border-neutral-100">
+            <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+              Shop Logo (shown on top of thermal receipts)
             </label>
-            <textarea
-              rows={2}
-              value={receiptFooter}
-              onChange={(e) => setReceiptFooter(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:border-neutral-900"
+            <div className="flex items-center gap-4">
+              {logoUrl ? (
+                <div className="w-16 h-16 rounded-lg border border-neutral-200 p-1 bg-neutral-50 flex items-center justify-center overflow-hidden">
+                  <img src={logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-lg border border-dashed border-neutral-300 text-neutral-400 flex items-center justify-center text-xs text-center p-1">
+                  No Logo
+                </div>
+              )}
+              <div className="space-y-1">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="text-xs text-neutral-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-neutral-900 file:text-white hover:file:bg-neutral-800"
+                />
+                <p className="text-xs text-neutral-400">PNG or JPG, max 500 KB.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: Receipt Customization with LIVE PREVIEW */}
+      {activeTab === 'receipt' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Left Column: Form Controls */}
+          <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-4">
+            <h3 className="font-bold text-base text-neutral-900 pb-3 border-b border-neutral-100 flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-neutral-700" />
+              <span>Thermal Receipt Settings</span>
+            </h3>
+
+            <Input
+              label="Receipt Number Prefix"
+              value={receiptPrefix}
+              onChange={(e) => setReceiptPrefix(e.target.value.toUpperCase())}
+              placeholder="RCP"
+            />
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+                Value Added Tax (VAT) % Rate
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                max="100"
+                value={taxRate}
+                onChange={(e) => setTaxRate(e.target.value)}
+                className="w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200 bg-white"
+                placeholder="0"
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                Set to 0% if textbooks and educational materials are VAT exempt in your category.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+                Customer Receipt Footer Note
+              </label>
+              <textarea
+                rows={3}
+                value={receiptFooter}
+                onChange={(e) => setReceiptFooter(e.target.value)}
+                className="w-full p-3 text-sm rounded-lg border border-neutral-200 focus:border-neutral-900"
+                placeholder="e.g. Goods once sold can be exchanged within 7 days..."
+              />
+            </div>
+
+            <div className="pt-2">
+              <Button
+                variant="primary"
+                onClick={() => handleSaveAllSettings()}
+                loading={isSaving}
+                className="min-h-[44px]"
+              >
+                Save Receipt Template
+              </Button>
+            </div>
+          </div>
+
+          {/* Right Column: Live Thermal Receipt Preview */}
+          <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
+              <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 flex items-center gap-1.5">
+                <Printer className="w-4 h-4 text-neutral-600" />
+                <span>Live 80mm Thermal Receipt Preview</span>
+              </span>
+              <span className="text-[11px] font-mono text-neutral-400">Updates live</span>
+            </div>
+
+            {/* Paper Slip Preview */}
+            <div className="mx-auto max-w-[340px] bg-neutral-50 p-6 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 shadow-inner select-text">
+              {/* Logo / Header */}
+              {logoUrl && (
+                <div className="flex justify-center mb-2">
+                  <img src={logoUrl} alt="Logo" className="max-h-12 object-contain" />
+                </div>
+              )}
+              <div className="text-center space-y-0.5">
+                <h4 className="font-bold text-sm tracking-tight">{shopName || 'KITABU BOOKSHOP'}</h4>
+                {tagline && <p className="text-[11px] text-neutral-600">{tagline}</p>}
+                <p className="text-[11px] text-neutral-600">{address || 'Nairobi CBD'}</p>
+                <p className="text-[11px] text-neutral-600">Tel: {phone || '+254 700 000 000'}</p>
+                {tillNumber && (
+                  <p className="text-[11px] font-bold text-emerald-800">
+                    M-PESA TILL: {tillNumber}
+                  </p>
+                )}
+                {paybillNumber && (
+                  <p className="text-[11px] font-bold text-emerald-800">
+                    PAYBILL: {paybillNumber}
+                  </p>
+                )}
+              </div>
+
+              <div className="my-2 border-b border-dashed border-neutral-400" />
+
+              <div className="flex justify-between text-[11px] text-neutral-600">
+                <span>Receipt: {receiptPrefix}-2026-0042</span>
+                <span>{new Date().toLocaleDateString('en-GB')}</span>
+              </div>
+              <div className="flex justify-between text-[11px] text-neutral-600">
+                <span>Cashier: Admin</span>
+                <span>Customer: Walk-in</span>
+              </div>
+
+              <div className="my-2 border-b border-dashed border-neutral-400" />
+
+              {/* Sample Items Table */}
+              <div className="space-y-1.5">
+                <div>
+                  <div className="font-semibold text-neutral-900">1. Secondary Chemistry Form 4</div>
+                  <div className="flex justify-between text-neutral-600 pl-2">
+                    <span>1 × KES 780.00</span>
+                    <span className="font-bold text-neutral-900">KES 780.00</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-neutral-900">2. A4 Exercise Book 200 Pages</div>
+                  <div className="flex justify-between text-neutral-600 pl-2">
+                    <span>2 × KES 150.00</span>
+                    <span className="font-bold text-neutral-900">KES 300.00</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="my-2 border-b border-dashed border-neutral-400" />
+
+              {/* Totals */}
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>KES 1,080.00</span>
+                </div>
+                {parseFloat(taxRate) > 0 && (
+                  <div className="flex justify-between text-neutral-600">
+                    <span>VAT ({taxRate}%):</span>
+                    <span>KES {((1080 * parseFloat(taxRate)) / 100).toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-sm pt-1 border-t border-neutral-300">
+                  <span>GRAND TOTAL:</span>
+                  <span>KES 1,080.00</span>
+                </div>
+                <div className="flex justify-between text-[11px] text-neutral-600">
+                  <span>PAID (M-PESA):</span>
+                  <span>KES 1,080.00</span>
+                </div>
+                <div className="flex justify-between text-[11px] text-neutral-600">
+                  <span>CHANGE DUE:</span>
+                  <span>KES 0.00</span>
+                </div>
+              </div>
+
+              <div className="my-2 border-b border-dashed border-neutral-400" />
+
+              {/* Footer */}
+              <div className="text-center text-[10px] text-neutral-600 space-y-1">
+                <p className="italic">{receiptFooter}</p>
+                <p className="font-semibold text-neutral-800">Software: KitabuPOS Offline</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: Payments & M-Pesa */}
+      {activeTab === 'payments' && (
+        <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-5 max-w-3xl">
+          <h3 className="font-bold text-base text-neutral-900 pb-3 border-b border-neutral-100 flex items-center gap-2">
+            <Smartphone className="w-5 h-5 text-neutral-700" />
+            <span>M-Pesa & Cash Register Setup</span>
+          </h3>
+
+          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 text-sm space-y-1">
+            <div className="font-bold flex items-center gap-1.5">
+              <span>M-Pesa Buy Goods & Paybill Options</span>
+            </div>
+            <p className="text-xs text-emerald-900">
+              Enter your official till or paybill numbers. These are printed on customer receipts and
+              displayed at the POS checkout tender screen.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Safaricom Till Number (Buy Goods)"
+              placeholder="e.g. 5432109"
+              value={tillNumber}
+              onChange={(e) => setTillNumber(e.target.value)}
+            />
+            <Input
+              label="Paybill Number (Optional)"
+              placeholder="e.g. 247247"
+              value={paybillNumber}
+              onChange={(e) => setPaybillNumber(e.target.value)}
             />
           </div>
 
-          <div className="pt-2 flex justify-end">
-            <button
-              type="submit"
-              className="px-5 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors tactile-btn"
-            >
-              Save Bookshop Settings
-            </button>
+          <div className="pt-3 border-t border-neutral-100 space-y-2">
+            <h4 className="font-bold text-sm text-neutral-900">Transaction Reference Validation</h4>
+            <p className="text-xs text-neutral-600">
+              KitabuPOS automatically validates Kenyan M-Pesa reference codes (10 alphanumeric
+              characters such as <code className="font-mono bg-neutral-100 px-1 py-0.5 rounded">SKL98X5Z21</code>) and
+              checks the local database to alert cashiers if a code has already been recorded in a prior sale.
+            </p>
           </div>
-        </form>
+        </div>
       )}
 
-      {/* Tab 2: SQLite Backup & Restore Center */}
-      {activeTab === 'backup' && (
-        <div className="space-y-6 max-w-3xl">
-          {/* SQLite Status Card */}
-          <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs space-y-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">
-                  Offline Database Architecture
-                </span>
-                <h3 className="font-bold text-base text-neutral-900 mt-0.5">
-                  Local SQLite 3 Engine with IndexedDB Mirroring
-                </h3>
-                <p className="text-xs text-neutral-500 mt-1">
-                  Database storage runs completely offline on the local PC. External USB flash drives can receive scheduled backup snapshots.
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-neutral-100 text-neutral-800 flex items-center justify-center">
-                <HardDrive className="w-5 h-5" />
-              </div>
-            </div>
+      {/* TAB 4: Security & Audit Logs */}
+      {activeTab === 'security' && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-4 max-w-3xl">
+            <h3 className="font-bold text-base text-neutral-900 pb-3 border-b border-neutral-100 flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-neutral-700" />
+              <span>Session & Lock Screen Security</span>
+            </h3>
 
-            <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 flex items-center justify-between text-xs">
-              <span className="text-neutral-600 font-medium">Last Recorded Backup:</span>
-              <span className="font-bold text-neutral-800">
-                {lastBackup ? formatDateTime(lastBackup) : 'No backup performed yet (Recommended: Backup now)'}
-              </span>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+                Automatic Lock Screen Timeout (Minutes of inactivity)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="120"
+                value={sessionTimeout}
+                onChange={(e) => setSessionTimeout(e.target.value)}
+                className="w-full sm:w-64 min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200 bg-white"
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                When inactive, the till screen locks automatically to prevent unauthorized sales.
+              </p>
             </div>
-
-            {/* Integrity Check */}
-            <div className="pt-2 border-t border-neutral-100 flex items-center justify-between">
-              <div>
-                <p className="font-bold text-xs text-neutral-800">PRAGMA integrity_check</p>
-                <p className="text-[11px] text-neutral-500">Run low-level B-tree and page parity diagnostics.</p>
-              </div>
-              <button
-                type="button"
-                disabled={isCheckingIntegrity}
-                onClick={handleRunIntegrityCheck}
-                className="px-3.5 py-1.5 rounded-lg border border-neutral-300 hover:bg-neutral-50 text-neutral-700 text-xs font-semibold transition-colors tactile-btn"
-              >
-                {isCheckingIntegrity ? 'Running Check...' : 'Verify Database Integrity'}
-              </button>
-            </div>
-
-            {integrityStatus && (
-              <div
-                className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
-                  integrityStatus.ok
-                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium'
-                    : 'bg-rose-50 border border-rose-200 text-rose-900 font-medium'
-                }`}
-              >
-                {integrityStatus.ok ? (
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                ) : (
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                )}
-                <span>{integrityStatus.message}</span>
-              </div>
-            )}
           </div>
 
-          {/* Backup & Restore Controls */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Create SQLite Backup */}
-            <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs space-y-3 flex flex-col justify-between">
+          {/* Audit Logs Table */}
+          <div className="bg-white rounded-xl border border-neutral-200/80 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h4 className="font-bold text-sm text-neutral-900">Download Raw SQLite (.sqlite)</h4>
-                <p className="text-xs text-neutral-500 mt-1">
-                  Downloads an exact binary copy of the active SQLite database file. Suitable for disaster recovery or machine migrations.
+                <h4 className="font-bold text-base text-neutral-900">System Audit Trail</h4>
+                <p className="text-xs text-neutral-500">
+                  Immutable ledger of sales voids, inventory adjustments, and logins.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleCreateBinaryBackup}
-                className="w-full py-2.5 px-4 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors tactile-btn"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export .sqlite Database</span>
-              </button>
+
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search user, action, details..."
+                  value={auditSearch}
+                  onChange={(e) => setAuditSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-neutral-200"
+                />
+              </div>
             </div>
 
-            {/* Create JSON Backup */}
-            <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs space-y-3 flex flex-col justify-between">
+            <div className="overflow-x-auto max-h-96">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-600 font-semibold sticky top-0">
+                  <tr>
+                    <th className="py-2.5 px-4">Timestamp</th>
+                    <th className="py-2.5 px-4">User</th>
+                    <th className="py-2.5 px-4">Action</th>
+                    <th className="py-2.5 px-4">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 font-mono">
+                  {filteredLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-neutral-500 font-sans">
+                        No audit records match your query.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-neutral-50/60">
+                        <td className="py-2.5 px-4 text-neutral-500 tabular-nums">
+                          {formatDateTime(log.created_at)}
+                        </td>
+                        <td className="py-2.5 px-4 font-sans font-medium text-neutral-900">
+                          {log.user_name}
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <span className="px-2 py-0.5 rounded bg-neutral-100 text-neutral-700 font-semibold">
+                            {log.action}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 font-sans text-neutral-700">
+                          {log.details}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: Database Backup & Integrity */}
+      {activeTab === 'backup' && (
+        <div className="space-y-6 max-w-4xl">
+          {/* Last Backup Card */}
+          <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-700">
+                <Database className="w-5 h-5" />
+              </div>
               <div>
-                <h4 className="font-bold text-sm text-neutral-900">Export Readable JSON Ledger</h4>
-                <p className="text-xs text-neutral-500 mt-1">
-                  Exports a human-readable JSON file containing inventory, sales, purchases, and settings for audit inspection.
+                <h4 className="font-bold text-base text-neutral-900">Backup Status</h4>
+                <p className="text-xs text-neutral-500">
+                  Last recorded backup:{' '}
+                  <strong className="text-neutral-800">
+                    {lastBackup ? formatDateTime(lastBackup) : 'Never recorded'}
+                  </strong>
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleCreateJsonBackup}
-                className="w-full py-2.5 px-4 bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors tactile-btn"
+            </div>
+
+            <Button
+              variant="primary"
+              onClick={handleDownloadBinaryBackup}
+              className="min-h-[44px]"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download SQLite .db File</span>
+            </Button>
+          </div>
+
+          {/* Backup & Export Options */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
+              <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
+                <HardDrive className="w-4 h-4 text-neutral-600" />
+                <span>Binary SQLite Database (.sqlite)</span>
+              </h4>
+              <p className="text-xs text-neutral-500">
+                Exact binary snapshot of all SQLite tables, indexes, and transactions. Can be opened in
+                DB Browser for SQLite or restored into another KitabuPOS terminal.
+              </p>
+              <Button
+                variant="secondary"
+                onClick={handleDownloadBinaryBackup}
+                className="w-full min-h-[44px]"
               >
-                <FileText className="w-4 h-4 text-neutral-500" />
-                <span>Export Readable JSON</span>
-              </button>
+                <Download className="w-4 h-4" />
+                <span>Export SQLite File</span>
+              </Button>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
+              <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-neutral-600" />
+                <span>Human-Readable JSON Export (.json)</span>
+              </h4>
+              <p className="text-xs text-neutral-500">
+                JSON export of all books, sales, inventory movements, and customers for easy external
+                reporting or data migration into spreadsheets.
+              </p>
+              <Button
+                variant="secondary"
+                onClick={handleCreateJsonBackup}
+                className="w-full min-h-[44px]"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export JSON Data</span>
+              </Button>
             </div>
           </div>
 
           {/* Restore Database */}
-          <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs space-y-3">
-            <div>
-              <h4 className="font-bold text-sm text-neutral-900">Restore from SQLite Backup File</h4>
-              <p className="text-xs text-neutral-500 mt-1">
-                Replaces current active records with an authenticated backup file. A pre-restore safety snapshot is automatically created before any replacement.
-              </p>
+          <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
+            <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
+              <Upload className="w-4 h-4 text-neutral-600" />
+              <span>Restore Database from Backup File</span>
+            </h4>
+            <p className="text-xs text-neutral-500">
+              Restore a previous <code className="font-mono bg-neutral-100 px-1 py-0.5 rounded">.sqlite</code> backup.
+              An emergency pre-restore safety copy is saved in your browser storage automatically before replacing records.
+            </p>
+            <div className="flex items-center gap-3 pt-1">
+              <label className="min-h-[44px] px-4 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-xs transition-colors">
+                <Upload className="w-4 h-4" />
+                <span>Choose .sqlite Backup File</span>
+                <input
+                  type="file"
+                  accept=".sqlite,.db"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setPendingRestoreFile(file);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Integrity Check */}
+          <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-neutral-600" />
+                  <span>SQLite PRAGMA Integrity Check</span>
+                </h4>
+                <p className="text-xs text-neutral-500">
+                  Verify internal B-tree health, foreign key consistency, and index validity.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={handleRunIntegrityCheck}
+                loading={isCheckingIntegrity}
+                className="min-h-[44px]"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Run Integrity Check</span>
+              </Button>
             </div>
 
-            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-xl text-xs font-semibold shadow-xs transition-colors tactile-btn">
-              <Upload className="w-4 h-4" />
-              <span>Select .sqlite File to Restore</span>
-              <input
-                type="file"
-                accept=".sqlite,.db"
-                onChange={handleRestoreFile}
-                className="hidden"
-              />
-            </label>
-
-            {restoreMessage && (
+            {integrityStatus && (
               <div
-                className={`p-3 rounded-xl text-xs border font-medium ${
-                  restoreMessage.ok
-                    ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                    : 'bg-rose-50 border-rose-300 text-rose-900'
+                className={`p-3.5 rounded-lg border text-xs font-mono ${
+                  integrityStatus.ok
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-rose-50 border-rose-200 text-rose-900'
                 }`}
               >
-                {restoreMessage.text}
+                Result: {integrityStatus.message}
               </div>
             )}
           </div>
+        </div>
+      )}
 
-          {/* Clear Demonstration Data / Factory Reset */}
-          <div className="p-5 rounded-2xl border border-rose-200 bg-rose-50/50 space-y-3">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+      {/* TAB 6: Data & Maintenance */}
+      {activeTab === 'maintenance' && (
+        <div className="space-y-6 max-w-3xl">
+          {/* First Run Wizard Launch */}
+          {onOpenWizard && (
+            <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs flex items-center justify-between">
               <div>
-                <h4 className="font-bold text-sm text-rose-950">Clean Demonstration Data (Client Handover)</h4>
-                <p className="text-xs text-rose-800 mt-1">
-                  Clears all sample books, transactions, and purchases so the client begins with a 100% empty, clean database. Shop settings and Administrator credentials are strictly preserved.
+                <h4 className="font-bold text-sm text-neutral-900">Setup Wizard</h4>
+                <p className="text-xs text-neutral-500">
+                  Re-run the initial 4-step quick configuration wizard to adjust store identity or import catalog.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={onOpenWizard}
+                className="min-h-[44px]"
+              >
+                <span>Launch Wizard</span>
+              </Button>
+            </div>
+          )}
+
+          {/* Clean Database Section */}
+          <div className="bg-white p-6 rounded-xl border border-rose-200 shadow-xs space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-rose-900">
+                  Clean Business Database (Reset Store Data)
+                </h3>
+                <p className="text-xs text-rose-700 mt-1">
+                  Permanently wipe transactional demo data, sales receipts, customer debts, and stock movements.
+                  Your staff logins and shop configuration will be safely kept.
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
+            <Button
+              variant="danger"
               onClick={() => {
                 setCleanConfirmText('');
                 setIsCleanModalOpen(true);
               }}
-              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs tactile-btn"
+              className="min-h-[44px]"
             >
-              Clear Demo Records...
-            </button>
+              <Trash2 className="w-4 h-4" />
+              <span>Clean Business Database...</span>
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Tab 3: System Audit Logs */}
-      {activeTab === 'audit' && (
-        <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs overflow-hidden space-y-3 p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h4 className="font-bold text-sm text-neutral-900">System Activity Audit Log</h4>
-              <p className="text-xs text-neutral-500">
-                Immutable ledger of sales, inventory deductions, stock adjustments, and settings updates.
-              </p>
+      {/* Clean Database Confirm Modal with strict CONFIRM type check */}
+      <Modal
+        isOpen={isCleanModalOpen}
+        onClose={() => setIsCleanModalOpen(false)}
+        title="⚠️ DANGER: Clean Business Database"
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2">
+            <p className="font-bold text-sm text-rose-800">
+              This action permanently clears active business records.
+            </p>
+            <p>
+              An automated emergency safety backup will be verified in your browser storage before
+              wiping.
+            </p>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <div className="font-bold text-neutral-800 uppercase tracking-wider">
+              What WILL BE permanently wiped:
             </div>
+            <ul className="list-disc pl-5 space-y-1 text-neutral-600">
+              <li>All sales transactions, receipts, and order items</li>
+              <li>All supplier purchase orders and delivery notes</li>
+              <li>All shop expense records and cash drawer payouts</li>
+              <li>All book titles, inventory stock levels, and movement history</li>
+              <li>All supplier contacts and customer balance accounts</li>
+            </ul>
+
+            <div className="font-bold text-neutral-800 uppercase tracking-wider pt-2">
+              What WILL BE safely preserved:
+            </div>
+            <ul className="list-disc pl-5 space-y-1 text-emerald-800 font-medium">
+              <li>System administrator and cashier login accounts</li>
+              <li>Shop profile name, till number, and receipt settings</li>
+              <li>Automated safety backup in browser storage</li>
+            </ul>
+          </div>
+
+          <div className="pt-2 border-t border-neutral-100">
+            <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+              Type <strong className="font-mono text-rose-600">CONFIRM</strong> to proceed:
+            </label>
             <input
               type="text"
-              placeholder="Search audit records..."
-              value={auditSearch}
-              onChange={(e) => setAuditSearch(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-xl border border-neutral-200 w-full sm:w-64"
+              autoFocus
+              value={cleanConfirmText}
+              onChange={(e) => setCleanConfirmText(e.target.value)}
+              placeholder="CONFIRM"
+              className="w-full min-h-[44px] px-3.5 py-2 text-sm font-mono font-bold rounded-lg border-2 border-neutral-300 focus:border-rose-500 focus:outline-none"
             />
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-600 font-semibold uppercase text-[11px]">
-                <tr>
-                  <th className="py-2.5 px-3">Timestamp</th>
-                  <th className="py-2.5 px-3">User</th>
-                  <th className="py-2.5 px-3">Action</th>
-                  <th className="py-2.5 px-3">Entity</th>
-                  <th className="py-2.5 px-3">Details</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 font-medium text-neutral-800">
-                {loadingAudit ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-neutral-400">
-                      Loading audit logs...
-                    </td>
-                  </tr>
-                ) : filteredLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-neutral-400">
-                      No audit logs found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-neutral-50">
-                      <td className="py-2.5 px-3 font-mono text-neutral-500 tabular-nums">
-                        {formatDateTime(log.created_at)}
-                      </td>
-                      <td className="py-2.5 px-3 font-semibold text-neutral-900">
-                        {log.user_name || 'System'}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-neutral-800">
-                        {log.action}
-                      </td>
-                      <td className="py-2.5 px-3 uppercase text-neutral-500 text-[10px]">
-                        {log.entity}
-                      </td>
-                      <td className="py-2.5 px-3 text-neutral-700 max-w-md truncate">
-                        {log.details}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <div className="pt-3 flex justify-end gap-3 border-t border-neutral-100">
+            <Button
+              variant="secondary"
+              onClick={() => setIsCleanModalOpen(false)}
+              disabled={isCleaning}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={cleanConfirmText !== 'CONFIRM' || isCleaning}
+              loading={isCleaning}
+              onClick={handleExecuteCleanData}
+            >
+              Permanently Clear Business Data
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
 
-      {/* Tab 4: Cross-Platform & Device Compatibility */}
-      {activeTab === 'device' && (
-        <div className="space-y-6 max-w-4xl">
-          {/* Active Platform Diagnostics Card */}
-          <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-4">
-              <div>
-                <h3 className="font-bold text-sm text-neutral-900">Current Device & Storage Engine</h3>
-                <p className="text-xs text-neutral-500">Live hardware, browser, and local database storage status.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <PWAInstallButton variant="header" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-                <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                  <Monitor className="w-4 h-4 text-neutral-600" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">Platform</span>
-                </div>
-                <p className="text-xs font-bold text-neutral-900">
-                  {typeof navigator !== 'undefined'
-                    ? /iphone|ipad|ipod/i.test(navigator.userAgent)
-                      ? 'Apple iOS (Mobile)'
-                      : /android/i.test(navigator.userAgent)
-                      ? 'Android (Mobile / Tablet)'
-                      : /mac/i.test(navigator.userAgent)
-                      ? 'Apple macOS (Desktop)'
-                      : /linux/i.test(navigator.userAgent)
-                      ? 'Linux (Desktop)'
-                      : 'Microsoft Windows (Desktop)'
-                    : 'Universal Web'}
-                </p>
-                <span className="text-[10px] text-neutral-400 font-mono">
-                  {typeof window !== 'undefined' && (window as any).electronAPI
-                    ? 'Electron Native App'
-                    : window.matchMedia('(display-mode: standalone)').matches
-                    ? 'Installed Standalone PWA'
-                    : 'Standard Web Browser'}
-                </span>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-                <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                  <HardDrive className="w-4 h-4 text-emerald-600" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">Database Engine</span>
-                </div>
-                <p className="text-xs font-bold text-neutral-900">SQLite WebAssembly (WASM)</p>
-                <span className="text-[10px] text-emerald-600 font-mono font-medium">
-                  IndexedDB persistent storage
-                </span>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-                <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                  <Globe className="w-4 h-4 text-neutral-600" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">Network Status</span>
-                </div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <p className="text-xs font-bold text-neutral-900">Offline-First Capable</p>
-                </div>
-                <span className="text-[10px] text-neutral-400">Zero cloud dependency required</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Supported Operating Systems & Deployment Guide */}
-          <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-xs space-y-4">
-            <h3 className="font-bold text-sm text-neutral-900">Cross-Platform Deployment Instructions</h3>
-            <p className="text-xs text-neutral-500 -mt-2">
-              KitabuPOS runs seamlessly across all major platforms with local data persistence.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-              {/* Windows */}
-              <div className="p-4 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <Laptop className="w-4 h-4 text-blue-600" />
-                  <h4 className="text-xs font-bold text-neutral-900">Windows 10 / 11</h4>
-                </div>
-                <ul className="text-xs text-neutral-600 space-y-1.5 list-disc list-inside">
-                  <li><strong>Instant PWA:</strong> In Chrome or Edge, click the <em>Install</em> icon in the address bar.</li>
-                  <li><strong>Native Installer:</strong> Run <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">npm run build:win</code> to produce <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">KitabuPOS-Setup.exe</code>.</li>
-                  <li><strong>Barcode & Printer:</strong> Works with all USB thermal receipt printers (POS-80, Epson) and barcode scanners.</li>
-                </ul>
-              </div>
-
-              {/* macOS */}
-              <div className="p-4 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <Laptop className="w-4 h-4 text-neutral-800" />
-                  <h4 className="text-xs font-bold text-neutral-900">Apple macOS</h4>
-                </div>
-                <ul className="text-xs text-neutral-600 space-y-1.5 list-disc list-inside">
-                  <li><strong>Instant PWA:</strong> In Safari (macOS Sonoma+), choose <em>File → Add to Dock</em>. In Chrome, click <em>Install</em>.</li>
-                  <li><strong>Native Installer:</strong> Run <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">npm run build:mac</code> to build universal DMG and ZIP packages.</li>
-                  <li><strong>Keyboard Shortcuts:</strong> Native Cmd+C, Cmd+V, and F2 sales shortcuts fully supported.</li>
-                </ul>
-              </div>
-
-              {/* Linux */}
-              <div className="p-4 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <Monitor className="w-4 h-4 text-amber-600" />
-                  <h4 className="text-xs font-bold text-neutral-900">Linux (Ubuntu, Debian, Fedora, Arch)</h4>
-                </div>
-                <ul className="text-xs text-neutral-600 space-y-1.5 list-disc list-inside">
-                  <li><strong>Instant PWA:</strong> In Chromium/Chrome, click <em>Install KitabuPOS</em> for desktop window integration.</li>
-                  <li><strong>Native Packages:</strong> Run <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">npm run build:linux</code> to generate <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">.AppImage</code> and <code className="font-mono text-[11px] bg-neutral-100 px-1 rounded">.deb</code> packages.</li>
-                  <li><strong>Storage:</strong> Fully self-contained local SQLite storage in user data profile.</li>
-                </ul>
-              </div>
-
-              {/* Mobile: Android & iOS */}
-              <div className="p-4 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <Smartphone className="w-4 h-4 text-emerald-600" />
-                  <h4 className="text-xs font-bold text-neutral-900">Mobile (Android & iOS / iPadOS)</h4>
-                </div>
-                <ul className="text-xs text-neutral-600 space-y-1.5 list-disc list-inside">
-                  <li><strong>Android:</strong> Open in Chrome, tap <em>Install App</em> or <em>Add to Home screen</em>.</li>
-                  <li><strong>iPhone / iPad:</strong> Open in Safari, tap <em>Share → Add to Home Screen</em>.</li>
-                  <li><strong>Touch Layout:</strong> Responsive POS with segmented catalog/cart switcher and full-screen mobile touch targets (≥44px).</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {/* Hardware & Peripherals Compatibility */}
-          <div className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-xs space-y-4">
-            <h3 className="font-bold text-sm text-neutral-900">Hardware & Peripherals Matrix</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-                <div className="flex items-center gap-2 text-neutral-700 font-semibold text-xs mb-1">
-                  <Barcode className="w-4 h-4 text-neutral-600" />
-                  <span>Barcode Scanners</span>
-                </div>
-                <p className="text-xs text-neutral-600">
-                  Standard USB or Bluetooth scanners functioning as HID keyboard input work out-of-the-box on POS (F2).
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-                <div className="flex items-center gap-2 text-neutral-700 font-semibold text-xs mb-1">
-                  <Printer className="w-4 h-4 text-neutral-600" />
-                  <span>Thermal Receipt Printers</span>
-                </div>
-                <p className="text-xs text-neutral-600">
-                  80mm and 58mm thermal printers (Epson, Xprinter, Rongta) via system print dialog or Windows/Mac drivers.
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-                <div className="flex items-center gap-2 text-neutral-700 font-semibold text-xs mb-1">
-                  <HardDrive className="w-4 h-4 text-neutral-600" />
-                  <span>USB Storage Drives</span>
-                </div>
-                <p className="text-xs text-neutral-600">
-                  Universal one-click binary <code className="font-mono text-[11px]">.sqlite</code> backup downloads directly to any FAT32/exFAT drive.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Modal for Clearing Business Data */}
-      {isCleanModalOpen && (
-        <div className="fixed inset-0 z-50 bg-neutral-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl border border-neutral-200 max-w-md w-full p-6 space-y-4">
-            <div className="flex items-center gap-2.5 text-rose-600">
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h3 className="font-bold text-sm text-neutral-900">Clear Demonstration Data</h3>
-            </div>
-
-            <p className="text-xs text-neutral-600 leading-relaxed">
-              This action permanently clears all demonstration books, stock movements, sales, purchases, and expenses. An emergency backup copy will automatically be saved.
-            </p>
-
-            <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-xs">
-              <label className="block text-[11px] font-medium text-neutral-500 mb-1">
-                Type <strong className="text-rose-600 font-mono">CLEAN</strong> to confirm:
-              </label>
-              <input
-                type="text"
-                value={cleanConfirmText}
-                onChange={(e) => setCleanConfirmText(e.target.value)}
-                placeholder="CLEAN"
-                className="w-full px-3 py-2 text-xs font-mono font-bold rounded-lg border border-neutral-300 focus:outline-none focus:border-rose-600"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsCleanModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium border border-neutral-200 text-neutral-700 hover:bg-neutral-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={cleanConfirmText !== 'CLEAN' || isCleaning}
-                onClick={handleExecuteCleanData}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-40"
-              >
-                {isCleaning ? 'Cleaning...' : 'Confirm Clean Reset'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Confirm Database Restore Modal */}
+      <ConfirmDialog
+        isOpen={!!pendingRestoreFile}
+        title="Confirm Database Restore"
+        message={`Restoring "${pendingRestoreFile?.name}" will replace current inventory, sales, and accounts with records from this backup file. An automated pre-restore backup will be taken first.`}
+        confirmLabel="Restore Database Now"
+        variant="danger"
+        onConfirm={handleConfirmRestore}
+        onClose={() => setPendingRestoreFile(null)}
+      />
     </div>
   );
 };

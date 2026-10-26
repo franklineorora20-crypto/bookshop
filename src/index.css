@@ -1,5 +1,26 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Primary Brand Accent */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-900: #1e3a8a;
+
+  /* Semantic Status Colors (Only used for status indicators) */
+  --color-status-success: #10b981;
+  --color-status-success-bg: #ecfdf5;
+  --color-status-warning: #f59e0b;
+  --color-status-warning-bg: #fffbeb;
+  --color-status-danger: #ef4444;
+  --color-status-danger-bg: #fef2f2;
+}
+
 @layer base {
   :root {
     --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -13,22 +34,24 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-size: 14px;
+    line-height: 1.5;
   }
 
-  /* Emil Kowalski style micro scrollbars */
+  /* Micro scrollbars for dense 1366x768 screens */
   ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.12);
+    background: rgba(0, 0, 0, 0.15);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.25);
+    background: rgba(0, 0, 0, 0.3);
   }
 }
 
@@ -43,6 +66,31 @@
 }
 .tactile-btn:active {
   transform: scale(0.975);
+}
+
+/* Touch target minimum 44px */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Visual Flash Feedback for Barcode Scanners */
+@keyframes flash-success {
+  0% { background-color: rgba(16, 185, 129, 0.25); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flash-error {
+  0% { background-color: rgba(239, 68, 68, 0.25); }
+  100% { background-color: transparent; }
+}
+
+.scanner-flash-success {
+  animation: flash-success 400ms ease-out forwards;
+}
+
+.scanner-flash-error {
+  animation: flash-error 450ms ease-out forwards;
 }
 
 @layer utilities {

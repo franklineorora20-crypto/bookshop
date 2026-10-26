@@ -80,7 +80,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ user, onUnlock, onLogout
               autoFocus
               value={credential}
               onChange={(e) => setCredential(e.target.value)}
-              placeholder={`Enter PIN (${user.pin ? 'e.g. ' + user.pin : 'password'})`}
+              placeholder="Enter PIN or password"
               className="w-full text-center tracking-widest text-base font-mono font-medium py-2 px-3 rounded-lg border border-neutral-200 focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
             />
           </div>

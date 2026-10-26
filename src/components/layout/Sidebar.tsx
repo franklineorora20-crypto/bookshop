@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BookOpen,
   LayoutDashboard,
@@ -11,8 +11,9 @@ import {
   Settings,
   Lock,
   LogOut,
-  WifiOff,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { User } from '../../types/index.ts';
 import { hasPermission } from '../../services/auth.ts';
@@ -50,6 +51,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const role = currentUser?.role || 'cashier';
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('kitabupos_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('kitabupos_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const navItems: Array<{
     id: NavTab;
@@ -107,7 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'users',
-      label: 'Staff & Roles',
+      label: 'Staff Accounts',
       icon: UserCog,
       shortcut: 'Alt+U',
       permissionKey: 'CAN_MANAGE_USERS',
@@ -132,50 +150,70 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-40 w-60 bg-neutral-950 text-neutral-300 flex flex-col h-screen border-r border-neutral-800/80 select-none shrink-0 transition-transform duration-200 ease-out ${
-          isMobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
+        className={`fixed md:static inset-y-0 left-0 z-40 bg-neutral-950 text-neutral-300 flex flex-col h-screen border-r border-neutral-800/80 shrink-0 transition-all duration-200 ease-out ${
+          isMobileOpen
+            ? 'translate-x-0 shadow-2xl w-60'
+            : `-translate-x-full md:translate-x-0 ${isCollapsed ? 'md:w-16' : 'md:w-56 lg:w-60'}`
         }`}
       >
         {/* Brand Header */}
-        <div className="h-14 px-4 border-b border-neutral-800/80 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-700/80 flex items-center justify-center text-neutral-100 shadow-xs">
-              <BookOpen className="w-4 h-4" />
+        <div className="h-14 px-3 border-b border-neutral-800/80 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="w-8 h-8 rounded-lg bg-neutral-900 border border-neutral-700/80 flex items-center justify-center text-neutral-100 shadow-xs shrink-0">
+              <BookOpen className="w-4 h-4 text-emerald-400" />
             </div>
-            <div>
-              <h1 className="font-semibold text-xs tracking-tight text-neutral-100 leading-tight">
-                KitabuPOS
-              </h1>
-              <span className="text-[10px] text-neutral-500 font-normal">
-                Bookshop System
-              </span>
-            </div>
+            {(!isCollapsed || isMobileOpen) && (
+              <div className="min-w-0">
+                <h1 className="font-semibold text-xs tracking-tight text-neutral-100 leading-tight truncate">
+                  KitabuPOS
+                </h1>
+                <span className="text-[10px] text-neutral-400 font-normal truncate block">
+                  Bookshop POS
+                </span>
+              </div>
+            )}
           </div>
-          {onCloseMobile && (
+
+          <div className="flex items-center">
+            {/* Desktop collapse toggle */}
             <button
-              onClick={onCloseMobile}
-              className="md:hidden p-1 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-800"
+              type="button"
+              onClick={toggleCollapse}
+              aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              className="hidden md:flex p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+              title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              <X className="w-4 h-4" />
+              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
-          )}
+
+            {/* Mobile close button */}
+            {onCloseMobile && (
+              <button
+                onClick={onCloseMobile}
+                aria-label="Close navigation"
+                className="md:hidden p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Offline Status */}
-        <div className="px-3 pt-3 pb-1">
-          <div className="px-2.5 py-1.5 rounded-lg bg-neutral-900/60 border border-neutral-800/60 flex items-center justify-between text-[11px]">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-              <span className="font-medium text-neutral-300">Offline SQLite</span>
+        {(!isCollapsed || isMobileOpen) && (
+          <div className="px-3 pt-3 pb-1">
+            <div className="px-2.5 py-1.5 rounded-lg bg-neutral-900/60 border border-neutral-800/60 flex items-center justify-between text-[11px]">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
+                <span className="font-medium text-neutral-300">Offline SQLite</span>
+              </div>
+              <span className="font-mono text-[9px] text-neutral-400 uppercase">Local DB</span>
             </div>
-            <span className="font-mono text-[9px] text-neutral-500 uppercase">
-              Local DB
-            </span>
           </div>
-        </div>
+        )}
 
         {/* Navigation Items */}
-        <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 px-2 py-2 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             if (item.permissionKey && !hasPermission(role, item.permissionKey)) {
               return null;
@@ -187,76 +225,104 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-120 tactile-btn ${
+                onClick={() => {
+                  setActiveTab(item.id);
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                title={isCollapsed && !isMobileOpen ? `${item.label} (${item.shortcut})` : undefined}
+                className={`group relative w-full flex items-center ${
+                  isCollapsed && !isMobileOpen ? 'justify-center px-2' : 'justify-between px-2.5'
+                } py-2.5 rounded-lg text-xs font-medium transition-all duration-120 tactile-btn min-h-[44px] ${
                   isActive
                     ? 'bg-neutral-800 text-white shadow-xs font-semibold'
-                    : 'text-neutral-400 hover:bg-neutral-900/90 hover:text-neutral-200'
+                    : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Icon
-                    className={`w-4 h-4 ${
-                      isActive ? 'text-white' : 'text-neutral-500'
+                    className={`w-4 h-4 shrink-0 ${
+                      isActive ? 'text-emerald-400' : 'text-neutral-400 group-hover:text-neutral-200'
                     }`}
                   />
-                  <span>{item.label}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {item.badge !== undefined && (
-                    <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-medium px-1.5 py-0.2 rounded">
-                      {item.badge}
-                    </span>
+                  {(!isCollapsed || isMobileOpen) && (
+                    <span className="truncate">{item.label}</span>
                   )}
-                  <kbd
-                    className={`text-[9px] font-mono px-1 py-0.2 rounded border ${
-                      isActive
-                        ? 'bg-neutral-700/60 border-neutral-600/50 text-neutral-300'
-                        : 'bg-neutral-900 border-neutral-800 text-neutral-500'
-                    }`}
-                  >
-                    {item.shortcut}
-                  </kbd>
                 </div>
+
+                {(!isCollapsed || isMobileOpen) && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {item.badge !== undefined && (
+                      <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-medium px-1.5 py-0.2 rounded">
+                        {item.badge}
+                      </span>
+                    )}
+                    <kbd
+                      className={`text-[9px] font-mono px-1 py-0.5 rounded border ${
+                        isActive
+                          ? 'bg-neutral-700/60 border-neutral-600/50 text-neutral-300'
+                          : 'bg-neutral-900 border-neutral-800 text-neutral-400'
+                      }`}
+                    >
+                      {item.shortcut}
+                    </kbd>
+                  </div>
+                )}
+
+                {/* Hover label for collapsed sidebar */}
+                {isCollapsed && !isMobileOpen && (
+                  <div className="absolute left-full ml-2 px-2.5 py-1 bg-neutral-900 text-white text-xs rounded-md shadow-lg border border-neutral-800 whitespace-nowrap hidden group-hover:flex items-center gap-1.5 z-50 pointer-events-none">
+                    <span>{item.label}</span>
+                    <kbd className="text-[9px] font-mono text-neutral-400 px-1 py-0.5 bg-neutral-800 rounded border border-neutral-700">
+                      {item.shortcut}
+                    </kbd>
+                  </div>
+                )}
               </button>
             );
           })}
         </nav>
 
         {/* User Session Footer */}
-        <div className="p-3 border-t border-neutral-800/80 bg-neutral-950">
-          <PWAInstallButton variant="sidebar" className="mb-2" />
+        <div className="p-2.5 border-t border-neutral-800/80 bg-neutral-950 shrink-0">
+          {(!isCollapsed || isMobileOpen) && (
+            <>
+              <PWAInstallButton variant="sidebar" className="mb-2" />
+              <div className="p-2 rounded-lg bg-neutral-900/70 border border-neutral-800/60 mb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-neutral-200 truncate max-w-[120px]">
+                    {currentUser?.full_name || 'Staff User'}
+                  </span>
+                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-300 border border-neutral-700/50">
+                    {role}
+                  </span>
+                </div>
+                <p className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                  @{currentUser?.username || 'user'}
+                </p>
+              </div>
+            </>
+          )}
 
-          <div className="p-2 rounded-lg bg-neutral-900/70 border border-neutral-800/60 mb-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-neutral-200 truncate max-w-[120px]">
-                {currentUser?.full_name || 'Staff User'}
-              </span>
-              <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 border border-neutral-700/50">
-                {role}
-              </span>
-            </div>
-            <p className="text-[10px] font-mono text-neutral-500 mt-0.5">
-              @{currentUser?.username || 'user'}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className={`grid ${isCollapsed && !isMobileOpen ? 'grid-cols-1 gap-1.5' : 'grid-cols-2 gap-1.5'}`}>
             <button
+              type="button"
               onClick={onLock}
-              className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 hover:text-neutral-200 text-xs transition-colors tactile-btn"
+              className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-neutral-100 text-xs transition-colors tactile-btn min-h-[40px]"
               title="Lock screen immediately"
+              aria-label="Lock screen"
             >
               <Lock className="w-3.5 h-3.5 text-neutral-400" />
-              <span>Lock</span>
+              {(!isCollapsed || isMobileOpen) && <span>Lock</span>}
             </button>
             <button
+              type="button"
               onClick={onLogout}
-              className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 hover:text-rose-400 text-xs transition-colors tactile-btn"
+              className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-rose-400 text-xs transition-colors tactile-btn min-h-[40px]"
               title="Sign out"
+              aria-label="Exit session"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>Exit</span>
+              {(!isCollapsed || isMobileOpen) && <span>Exit</span>}
             </button>
           </div>
         </div>

@@ -45,23 +45,29 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   return (
-    <header className="h-14 bg-white/80 backdrop-blur-md border-b border-neutral-200/80 px-4 sm:px-6 flex items-center justify-between shadow-xs select-none sticky top-0 z-20">
+    <header className="h-14 bg-white/90 backdrop-blur-md border-b border-neutral-200/80 px-4 sm:px-6 flex items-center justify-between shadow-xs sticky top-0 z-20">
       <div className="flex items-center gap-3">
         {onToggleMobileMenu && (
           <button
             onClick={onToggleMobileMenu}
-            className="md:hidden p-1.5 rounded-lg text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
+            className="md:hidden p-2 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors touch-target flex items-center justify-center"
             aria-label="Toggle navigation menu"
           >
             <Menu className="w-5 h-5" />
           </button>
         )}
         <div>
-          <h2 className="text-sm sm:text-base font-semibold text-neutral-900 tracking-tight leading-tight truncate max-w-[200px] sm:max-w-none">
-            {title}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm sm:text-base font-semibold text-neutral-900 tracking-tight leading-tight truncate max-w-[200px] sm:max-w-none">
+              {title}
+            </h2>
+            <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-medium border border-emerald-200/70">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Saved</span>
+            </span>
+          </div>
           {subtitle && (
-            <p className="text-[11px] text-neutral-400 font-normal hidden sm:block truncate max-w-md">
+            <p className="text-[11px] text-neutral-500 font-normal hidden sm:block truncate max-w-md">
               {subtitle}
             </p>
           )}

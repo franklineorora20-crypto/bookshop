@@ -125,3 +125,76 @@ test('manual book entry and atomic non-credit point-of-sale deduction works', as
   const grossProfit = Number(revRes[0]?.values[0]?.[0]) - Number(cogsRes[0]?.values[0]?.[0]);
   assert.equal(grossProfit, 600);
 });
+
+test('processSale and voidSale atomic cycle restocks inventory and creates exactly one audit log', async () => {
+  const { addBook, processSale, voidSale, getBooks, getSales, getAuditLogs } = await import('./database.ts');
+
+  // Add test book
+  const bookId = await addBook({
+    title: 'Blossoms of the Savannah',
+    author: 'Henry Ole Kulet',
+    publisher: 'Longhorn',
+    category: 'Literature',
+    purchase_price: 350,
+    selling_price: 550,
+    quantity: 10,
+    reorder_level: 3,
+  }, 1, 'admin');
+
+  // Process sale of 2 units
+  const { saleId } = await processSale(
+    {
+      cashierName: 'Jane Cashier',
+      customerName: 'Walk-in Student',
+      subtotal: 1100,
+      discountTotal: 0,
+      taxTotal: 0,
+      grandTotal: 1100,
+      totalPaid: 1100,
+      changeAmount: 0,
+      paymentMethod: 'cash',
+    },
+    [
+      {
+        bookId,
+        bookTitle: 'Blossoms of the Savannah',
+        quantity: 2,
+        unitPurchasePrice: 350,
+        unitSellingPrice: 550,
+        discountAmount: 0,
+        totalPrice: 1100,
+      },
+    ],
+    1,
+    'admin'
+  );
+
+  let books = await getBooks();
+  let book = books.find((b) => b.id === bookId);
+  assert.equal(book?.quantity, 8, 'Quantity should be decremented from 10 to 8');
+
+  // Count audit logs before void
+  const logsBefore = await getAuditLogs(50);
+  const voidLogsBefore = logsBefore.filter((l) => l.action === 'SALE_VOID' && String(l.entity_id) === String(saleId));
+  assert.equal(voidLogsBefore.length, 0);
+
+  // Void the sale
+  await voidSale(saleId, 'Customer exchange before leaving counter', 1, 'admin');
+
+  // Verify stock is restored
+  books = await getBooks();
+  book = books.find((b) => b.id === bookId);
+  assert.equal(book?.quantity, 10, 'Quantity should be restored to 10');
+
+  // Verify sale is marked voided
+  const sales = await getSales();
+  const voidedSale = sales.find((s) => s.id === saleId);
+  assert.equal(voidedSale?.is_voided, 1);
+  assert.equal(voidedSale?.void_reason, 'Customer exchange before leaving counter');
+
+  // Verify exactly ONE audit entry for SALE_VOID was logged (no duplicates)
+  const logsAfter = await getAuditLogs(50);
+  const voidLogsAfter = logsAfter.filter((l) => l.action === 'SALE_VOID' && String(l.entity_id) === String(saleId));
+  assert.equal(voidLogsAfter.length, 1, 'Must create exactly one audit log entry for SALE_VOID');
+});
+

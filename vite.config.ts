@@ -16,6 +16,7 @@ export default defineConfig(() => {
           'apple-touch-icon.png',
           'icon.svg',
           'sql-wasm.wasm',
+          'sql-wasm-browser.wasm',
           'kitabupos_inventory_template.csv',
         ],
         manifest: {

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, UploadCloud, CheckCircle, AlertCircle, FileText, ArrowRight, Download } from 'lucide-react';
+import { X, UploadCloud, CheckCircle, AlertCircle, FileText, Download } from 'lucide-react';
 import { parseBooksCSV, ParsedBookRow } from '../../utils/csv.ts';
 import { addBook } from '../../db/database.ts';
-import { formatKES } from '../../utils/formatters.ts';
+import { Button } from '../common/Button.tsx';
+import { toast } from 'sonner';
 
 interface CSVImportModalProps {
   onClose: () => void;
@@ -17,7 +18,6 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
   userId,
   userName,
 }) => {
-  const [csvText, setCsvText] = useState<string>('');
   const [parsedData, setParsedData] = useState<{
     rows: ParsedBookRow[];
     totalRows: number;
@@ -27,10 +27,12 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
 
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<string>('');
+  const [importSummary, setImportSummary] = useState<string | null>(null);
 
   const handleDownloadTemplate = () => {
     const templateContent = `Title,Author,Publisher,Category,SellingPrice,PurchasePrice,Quantity,ReorderLevel,ISBN,Barcode,Edition
 "Example Book Title","Author Name","Publisher Name","KCSE Set Books",650,450,20,5,"978-9966000000","","1st Edition"
+"Primary English Grade 4","Kenya Literature Bureau","KLB","CBC Grade 4",320,220,50,10,"978-9966111111","","2nd Edition"
 `;
     const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -50,11 +52,33 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      setCsvText(text);
       const parsed = parseBooksCSV(text);
       setParsedData(parsed);
+      setImportSummary(null);
     };
     reader.readAsText(file);
+  };
+
+  const handleDownloadErrorsCSV = () => {
+    if (!parsedData) return;
+    const errorRows = parsedData.rows.filter((r) => !r.isValid);
+    if (errorRows.length === 0) return;
+
+    let csv = 'RowNumber,Title,Author,Category,Price,Quantity,Errors\n';
+    for (const r of errorRows) {
+      csv += `${r.rowNumber},"${(r.title || '').replace(/"/g, '""')}","${(r.author || '').replace(/"/g, '""')}","${(r.category || '').replace(/"/g, '""')}",${r.selling_price},${r.quantity},"${(r.errors || []).join('; ').replace(/"/g, '""')}"\n`;
+    }
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'KitabuPOS_Import_Errors.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success('Downloaded error report CSV');
   };
 
   const handleImportValidRows = async () => {
@@ -90,10 +114,14 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
       }
 
       await onSuccess();
-      alert(`Successfully imported ${imported} books into the SQLite database!`);
-      onClose();
+      toast.success(`Successfully imported ${imported} titles into SQLite database!`);
+      setImportSummary(`Successfully imported ${imported} books into local inventory.`);
+      setTimeout(() => {
+        onClose();
+      }, 1200);
     } catch (err: any) {
-      alert(`Import error at row: ${err.message}. ${imported} rows were committed.`);
+      toast.error(`Import stopped: ${err.message}. ${imported} rows were saved.`);
+      setImportSummary(`Import interrupted: ${err.message} (${imported} records committed).`);
       await onSuccess();
     } finally {
       setIsImporting(false);
@@ -101,40 +129,56 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
     }
   };
 
+  const mappedColumns = [
+    { source: 'Title', target: 'Book Title (Required)', status: 'Mapped' },
+    { source: 'Author', target: 'Author (Required)', status: 'Mapped' },
+    { source: 'SellingPrice', target: 'Selling Price KES (Required)', status: 'Mapped' },
+    { source: 'Quantity', target: 'Stock Quantity (Required)', status: 'Mapped' },
+    { source: 'Category', target: 'Category / Department', status: 'Mapped' },
+    { source: 'PurchasePrice', target: 'Unit Purchase Cost (COGS)', status: 'Mapped' },
+    { source: 'ISBN / Barcode', target: 'EAN-13 / Scanner Code', status: 'Mapped' },
+  ];
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-2">
+    <div className="fixed inset-0 z-50 bg-neutral-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="p-4 bg-neutral-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
             <UploadCloud className="w-5 h-5 text-emerald-400" />
-            <h3 className="font-bold text-sm">Import Books from CSV File</h3>
+            <h3 className="font-bold text-sm">Import Books from CSV Spreadsheet</h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button
+            onClick={onClose}
+            aria-label="Close modal"
+            className="p-1 rounded-md text-neutral-400 hover:text-white"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-5 overflow-y-auto flex-1 space-y-4">
-          {/* File picker and sample button */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50">
+        <div className="p-5 overflow-y-auto flex-1 space-y-4 text-xs sm:text-sm">
+          {/* File picker & template banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border-2 border-dashed border-neutral-300 bg-neutral-50">
             <div>
-              <p className="font-bold text-sm text-slate-800">Choose CSV File to Upload</p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Expected columns: Title, Author, Publisher, Category, SellingPrice, PurchasePrice, Quantity, ReorderLevel, ISBN
+              <p className="font-bold text-sm text-neutral-900">Select CSV Inventory File</p>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Exported from Excel or KitabuPOS inventory template (.csv).
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleDownloadTemplate}
-                className="px-3 py-1.5 rounded-lg border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-semibold text-xs transition-colors flex items-center gap-1.5 tactile-btn"
+                leftIcon={<Download className="w-3.5 h-3.5" />}
               >
-                <Download className="w-3.5 h-3.5 text-neutral-500" />
-                <span>Download Template (.csv)</span>
-              </button>
-              <label className="cursor-pointer px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-colors flex items-center gap-1.5">
-                <FileText className="w-4 h-4" />
-                <span>Select .csv File</span>
+                Template (.csv)
+              </Button>
+              <label className="cursor-pointer">
+                <span className="inline-flex items-center justify-center font-bold px-4 py-2 min-h-[44px] rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs tactile-btn shadow-xs">
+                  Choose CSV File
+                </span>
                 <input
                   type="file"
                   accept=".csv,text/csv"
@@ -145,70 +189,97 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
             </div>
           </div>
 
-          {/* Validation Summary Badge */}
-          {parsedData && (
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold">
-              <span className="text-slate-700">Total Rows Detected: {parsedData.totalRows}</span>
-              <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
-                <CheckCircle className="w-3.5 h-3.5" />
-                {parsedData.validCount} Valid & Ready
-              </span>
-              {parsedData.errorCount > 0 && (
-                <span className="text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  {parsedData.errorCount} Errors / Invalid
-                </span>
-              )}
+          {/* Column Mapping Preview */}
+          <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200 space-y-2">
+            <h4 className="font-bold text-xs uppercase tracking-wider text-neutral-700">
+              Expected Column Mapping
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {mappedColumns.map((col) => (
+                <div key={col.source} className="p-2 rounded-lg bg-white border border-neutral-200">
+                  <span className="font-mono font-bold text-neutral-900 block">{col.source}</span>
+                  <span className="text-[11px] text-neutral-500">{col.target}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Import Summary / Status */}
+          {importSummary && (
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{importSummary}</span>
             </div>
           )}
 
-          {/* Parsed Rows Preview Table */}
+          {/* Parsed Results Breakdown */}
           {parsedData && (
-            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-              <div className="max-h-80 overflow-y-auto">
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200">
+                  <span className="text-xs text-neutral-500">Total Rows</span>
+                  <p className="text-xl font-bold font-mono text-neutral-900">{parsedData.totalRows}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                  <span className="text-xs text-emerald-700 font-semibold">Valid to Import</span>
+                  <p className="text-xl font-bold font-mono text-emerald-700">{parsedData.validCount}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200">
+                  <span className="text-xs text-rose-700 font-semibold">Row Errors</span>
+                  <p className="text-xl font-bold font-mono text-rose-700">{parsedData.errorCount}</p>
+                </div>
+              </div>
+
+              {/* If errors, provide downloadable error report */}
+              {parsedData.errorCount > 0 && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span className="text-xs font-medium text-rose-900">
+                      {parsedData.errorCount} row(s) contain invalid price, empty title, or formatting issues.
+                    </span>
+                  </div>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={handleDownloadErrorsCSV}
+                    leftIcon={<Download className="w-3.5 h-3.5" />}
+                  >
+                    Download Error Rows (.csv)
+                  </Button>
+                </div>
+              )}
+
+              {/* Preview Rows Table */}
+              <div className="border border-neutral-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold sticky top-0">
+                  <thead className="bg-neutral-100 text-neutral-700 font-bold sticky top-0">
                     <tr>
-                      <th className="py-2.5 px-3">Row</th>
-                      <th className="py-2.5 px-3">Title</th>
-                      <th className="py-2.5 px-3">Author</th>
-                      <th className="py-2.5 px-3">Category</th>
-                      <th className="py-2.5 px-3 text-right">Cost</th>
-                      <th className="py-2.5 px-3 text-right">Price</th>
-                      <th className="py-2.5 px-3 text-center">Stock</th>
-                      <th className="py-2.5 px-3">Validation Status</th>
+                      <th className="px-3 py-2">Row</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Title</th>
+                      <th className="px-3 py-2">Author</th>
+                      <th className="px-3 py-2 text-right">Price</th>
+                      <th className="px-3 py-2 text-right">Qty</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                    {parsedData.rows.map((row) => (
-                      <tr
-                        key={row.rowNumber}
-                        className={row.isValid ? 'hover:bg-slate-50' : 'bg-rose-50/50'}
-                      >
-                        <td className="py-2 px-3 text-slate-400">{row.rowNumber}</td>
-                        <td className="py-2 px-3 font-medium font-sans text-slate-900 truncate max-w-[160px]">
-                          {row.title || '<Empty Title>'}
-                        </td>
-                        <td className="py-2 px-3 font-sans text-slate-600 truncate max-w-[120px]">
-                          {row.author}
-                        </td>
-                        <td className="py-2 px-3 font-sans text-slate-500">{row.category}</td>
-                        <td className="py-2 px-3 text-right">{formatKES(row.purchase_price)}</td>
-                        <td className="py-2 px-3 text-right font-bold text-slate-900">
-                          {formatKES(row.selling_price)}
-                        </td>
-                        <td className="py-2 px-3 text-center">{row.quantity}</td>
-                        <td className="py-2 px-3 font-sans">
-                          {row.isValid ? (
-                            <span className="text-emerald-700 flex items-center gap-1 font-semibold">
-                              <CheckCircle className="w-3.5 h-3.5" /> OK
-                            </span>
+                  <tbody className="divide-y divide-neutral-100">
+                    {parsedData.rows.slice(0, 50).map((r) => (
+                      <tr key={r.rowNumber} className={r.isValid ? 'hover:bg-neutral-50' : 'bg-rose-50/50'}>
+                        <td className="px-3 py-2 font-mono text-neutral-500">{r.rowNumber}</td>
+                        <td className="px-3 py-2">
+                          {r.isValid ? (
+                            <span className="text-emerald-700 font-bold">Valid</span>
                           ) : (
-                            <span className="text-rose-600 font-medium">
-                              {row.errors.join(', ')}
+                            <span className="text-rose-600 font-bold" title={(r.errors || []).join(', ')}>
+                              Error: {r.errors?.[0]}
                             </span>
                           )}
                         </td>
+                        <td className="px-3 py-2 font-semibold text-neutral-900">{r.title || '—'}</td>
+                        <td className="px-3 py-2 text-neutral-600">{r.author || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono">{r.selling_price}</td>
+                        <td className="px-3 py-2 text-right font-mono">{r.quantity}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -216,37 +287,29 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
               </div>
             </div>
           )}
+
+          {isImporting && (
+            <div className="p-3 bg-neutral-100 rounded-lg text-xs font-mono text-neutral-800 animate-pulse">
+              {importProgress}
+            </div>
+          )}
         </div>
 
-        {/* Footer with Import Button */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-          <div className="text-xs text-slate-500 font-medium">
-            {importProgress ? (
-              <span className="text-emerald-700 animate-pulse">{importProgress}</span>
-            ) : parsedData ? (
-              `Will insert ${parsedData.validCount} valid books into SQLite.`
-            ) : (
-              'Upload or paste a CSV file to preview.'
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-200 text-xs font-bold"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={isImporting || !parsedData || parsedData.validCount === 0}
-              onClick={handleImportValidRows}
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 text-white text-xs font-bold flex items-center gap-2 transition-colors shadow-sm"
-            >
-              <UploadCloud className="w-4 h-4" />
-              <span>Import Valid Books ({parsedData?.validCount || 0})</span>
-            </button>
-          </div>
+        {/* Footer */}
+        <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex items-center justify-between">
+          <Button variant="outline" size="md" onClick={onClose} disabled={isImporting}>
+            Cancel
+          </Button>
+
+          <Button
+            variant="primary"
+            size="md"
+            onClick={handleImportValidRows}
+            disabled={!parsedData || parsedData.validCount === 0 || isImporting}
+            loading={isImporting}
+          >
+            Import {parsedData ? `${parsedData.validCount} Valid Books` : 'Books'}
+          </Button>
         </div>
       </div>
     </div>

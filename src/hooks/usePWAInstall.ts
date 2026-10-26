@@ -54,10 +54,15 @@ export function usePWAInstall() {
     return false;
   };
 
+  const isElectron =
+    typeof window !== 'undefined' &&
+    (Boolean((window as any).electronAPI) || window.navigator.userAgent.toLowerCase().includes('electron'));
+
   return {
-    isInstallable: !!deferredPrompt,
-    isInstalled,
+    isInstallable: !isElectron && !isInstalled && !!deferredPrompt,
+    isInstalled: isInstalled || isElectron,
     isIOS,
+    isElectron,
     install,
   };
 }
