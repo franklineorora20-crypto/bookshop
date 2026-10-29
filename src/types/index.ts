@@ -1,15 +1,18 @@
-export type UserRole = 'admin' | 'cashier';
+export type UserRole = 'admin' | 'manager' | 'cashier';
 
 export interface User {
   id: number;
   username: string;
   full_name: string;
   role: UserRole;
-  password_hash: string;
+  password_hash?: string;
   pin?: string;
+  has_pin?: boolean | number;
   is_active: number; // 1 or 0
   created_at: string;
   last_login?: string;
+  failed_login_attempts?: number;
+  locked_until?: string | null;
 }
 
 export interface Book {
@@ -179,9 +182,11 @@ export interface ShopSettings {
   receipt_footer: string;
   currency: string;
   tax_rate: number; // percentage, e.g. 0 or 16
+  max_cashier_discount_percent?: number;
   session_timeout_minutes: number;
   last_backup_at?: string;
   backup_schedule: 'daily' | 'weekly' | 'manual';
+  backup_folder_path?: string;
   logo_url?: string;
   receipt_prefix?: string;
   default_reorder_level?: number;

@@ -1,6 +1,6 @@
 # KitabuPOS Windows Desktop Installation Guide
 
-KitabuPOS is a standalone, offline-first bookshop management and Point-of-Sale (POS) system designed for retail bookshops, educational suppliers, and school bookstores.
+KitabuPOS is a standalone, offline-first bookshop management and Point-of-Sale (POS) system designed for retail academic bookshops, educational suppliers, and school bookstores in Kenya.
 
 ---
 
@@ -10,88 +10,85 @@ KitabuPOS is a standalone, offline-first bookshop management and Point-of-Sale (
 - **Operating System**: Windows 10 (64-bit) or Windows 11 (64-bit).
 - **Processor**: Intel Core i3 (or AMD equivalent) 2.0 GHz or higher.
 - **RAM**: 4 GB minimum (8 GB recommended for stores with > 20,000 titles).
-- **Storage**: At least 500 MB of free hard drive space (SSD recommended).
+- **Storage**: At least 500 MB of free storage space (SSD recommended).
 - **Display**: 1366 × 768 minimum resolution (1920 × 1080 recommended).
 - **Peripherals**:
-  - USB or Wireless Barcode Scanner (Plug-and-Play HID keyboard emulation).
+  - USB Barcode Scanner (Plug-and-Play HID keyboard emulation).
   - 80mm or 58mm ESC/POS Thermal Receipt Printer (USB or network).
-  - USB Flash Drive (for daily offline backups).
+  - USB Flash Drive (for automated external backups).
 
 ### Software Requirements
 - No internet access required after installation.
-- No external database server (MySQL, PostgreSQL, or SQL Server) required. SQLite is embedded directly into the application.
+- Embedded SQLite engine—no external database servers (MySQL, PostgreSQL, or SQL Server) required.
+- Node.js 20+ (if compiling from source code).
 
 ---
 
 ## 2. Windows Installer Deployment
 
 ### Method A: Running the Packaged Windows Setup (`.exe`)
-1. Download or copy the installer executable (`KitabuPOS-Setup-1.0.0.exe`) to the target computer or desktop.
-2. Double-click `KitabuPOS-Setup-1.0.0.exe`.
+1. Obtain the installer executable (`KitabuPOS-Setup-${version}.exe`).
+2. Double-click the installer.
 3. If Windows SmartScreen displays a prompt ("Windows protected your PC"), click **More info** and select **Run anyway**.
-4. The NSIS installer will guide you through the setup:
+4. The NSIS installer guides you through setup:
    - Select installation directory (defaults to `C:\Program Files\KitabuPOS` or `%LOCALAPPDATA%\Programs\KitabuPOS`).
-   - Check the box to **Create a Desktop Shortcut**.
-   - Check the box to **Create a Start Menu Shortcut**.
+   - Leave the option checked to **Create a Desktop Shortcut**.
+   - Check **Create a Start Menu Shortcut**.
 5. Click **Install**.
-6. When the installation finishes, check **Run KitabuPOS** and click **Finish**.
+6. When installation finishes, leave **Run KitabuPOS** checked and click **Finish**.
+7. Note: The installer does not delete user data on uninstall (`deleteAppDataOnUninstall = false`) to protect business records.
 
 ### Method B: Portable Folder / Unpacked Directory
-If running from a USB drive or direct folder:
 1. Copy the `release/win-unpacked` folder to the target machine (e.g. `C:\KitabuPOS`).
 2. Right-click `KitabuPOS.exe` and select **Send to -> Desktop (create shortcut)**.
-3. Double-click the desktop shortcut to launch the application.
+3. Double-click the shortcut to launch the application.
 
 ---
 
-## 3. Database Location & Data Isolation
-To ensure application updates and reinstalls never overwrite client business records, KitabuPOS maintains an isolated database path:
+## 3. Database Location & Data Architecture
+
+To ensure application updates and reinstalls never overwrite client business records:
 - **Application Files**: Installed under `C:\Program Files\KitabuPOS`.
-- **Client SQLite Database**: Stored in the user's secure application profile:
+- **Database Storage**: Currently persisted in browser-isolated IndexedDB storage within the application renderer, architected for future migration to main-process SQLite.
+- **Automatic Backups**: Verified `.sqlite` database backups are saved to:
   ```
-  %APPDATA%\KitabuPOS_Data\kitabupos.sqlite
+  %APPDATA%\KitabuPOS\Backups
   ```
-- **Browser Fallback Engine**: If run within a modern browser, data is mirrored to browser-isolated `IndexedDB (KitabuPOS_DB_Storage)`.
+  Rotated automatically to retain 14 daily and 8 weekly backup files.
+- **Secondary Backup Location**: In Settings -> Database Backup, an external path (such as a USB flash drive `D:\Backups`) can be chosen to mirror every verified backup.
 
 ---
 
 ## 4. First-Time Setup Wizard Walkthrough
+
 When KitabuPOS is launched for the first time, it automatically displays the **Client Setup Wizard**:
 
 1. **Step 1: Store Identity**
-   - Enter your official Bookshop Business Name.
-   - Enter your Tagline / Motto.
-   - Upload your Bookshop logo (PNG/JPG up to 1MB).
+   - Enter your official Bookshop Business Name and Tagline.
+   - Upload your Bookshop logo (PNG/JPG up to 500 KB) for thermal receipts.
 2. **Step 2: Location & Contact**
-   - Enter your Telephone Number, Email Address, Physical Street Address, and County/Town.
+   - Enter your Phone Number, Email, Physical Street Address, and County/Town.
 3. **Step 3: Currency & Payments**
    - Currency defaults to `KES` (Kenyan Shillings).
-   - Configure VAT rate (0% for academic school books, 16% for general stationery).
-   - Enter your M-Pesa Buy Goods Till Number or Paybill Number (printed on receipts).
+   - Configure VAT rate (0% for academic school books, 16% for commercial stationery).
+   - Enter your M-Pesa Buy Goods Till Number or Paybill Number.
 4. **Step 4: Receipt & Stock Limits**
    - Set receipt numbering prefix (default: `RCP`).
    - Set receipt footer terms and return policy.
    - Set default low-stock alert threshold (default: 5 units).
 5. **Step 5: Administrator Account**
    - Enter the Administrator's Full Name and Username.
-   - Enter a secure password (minimum 6 characters) and confirm it.
-   - Set an optional 4-digit quick unlock PIN.
-6. **Step 6: Backup Preferences & Initial Safety File**
-   - Select your backup schedule (`daily`, `weekly`, or `manual`).
-   - Click **Download Initial SQLite (.sqlite)** to save a reference copy of your clean starting database.
-   - Click **Complete Setup & Launch Store**.
+   - Enter a secure password (**minimum 8 characters**) and confirm it.
+   - Set an optional 4-6 digit quick unlock PIN (repeated digits like `1111` or sequential digits like `1234` are rejected).
+   - All credentials are encrypted using bcrypt (cost factor 10).
+6. **Step 6: Backup Preferences**
+   - Select backup frequency (`daily`, `weekly`, or `manual`).
+   - Optionally choose a secondary backup destination folder (e.g. USB flash drive).
+   - Complete setup and proceed to Store Dashboard.
 
 ---
 
-## 5. Hardware Configuration
+## 5. Security & Overdue Backup Protection
 
-### Barcode Scanner Setup
-1. Connect the USB barcode scanner to any USB port.
-2. Open **Point of Sale (F2)** in KitabuPOS.
-3. Scan any book barcode (EAN-13 / ISBN-13). The item will immediately be identified and added to the sales cart.
-
-### Thermal Receipt Printer Setup
-1. Install your printer manufacturer's Windows driver (e.g., Epson, Xprinter, Rongta, POS-80).
-2. Set the printer as your Windows **Default Printer** or select it in the print dialog.
-3. In KitabuPOS, completed sales trigger the thermal receipt preview modal.
-4. Click **Print Receipt** (or press Enter). The receipt will print cleanly on 80mm or 58mm roll paper.
+- **Brute-Force Lockout**: 5 consecutive failed login or PIN unlock attempts result in an automated 5-minute lockout (duration doubles on repeated lockouts). The lockout state is persisted in the database.
+- **Overdue Backup Banner**: If no verified backup has been completed within 2 days (daily schedule) or 8 days (weekly schedule), a persistent banner appears at the top of the till prompting staff to back up immediately.

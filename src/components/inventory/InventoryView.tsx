@@ -155,32 +155,59 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
     await onRefreshData();
   };
 
-  // Export CSV
+  // Export CSV (Hides purchase price from cashiers)
   const handleExportCSV = () => {
-    const headers = [
-      'Title',
-      'Author',
-      'Publisher',
-      'Category',
-      'ISBN',
-      'Barcode',
-      'Purchase Price (KES)',
-      'Selling Price (KES)',
-      'Quantity',
-      'Reorder Level',
-    ];
-    const rows = filteredBooks.map((b) => [
-      b.title,
-      b.author,
-      b.publisher,
-      b.category,
-      b.isbn || '',
-      b.barcode || '',
-      b.purchase_price,
-      b.selling_price,
-      b.quantity,
-      b.reorder_level,
-    ]);
+    const isCashier = currentUser?.role === 'cashier';
+    const headers = isCashier
+      ? [
+          'Title',
+          'Author',
+          'Publisher',
+          'Category',
+          'ISBN',
+          'Barcode',
+          'Selling Price (KES)',
+          'Quantity',
+          'Reorder Level',
+        ]
+      : [
+          'Title',
+          'Author',
+          'Publisher',
+          'Category',
+          'ISBN',
+          'Barcode',
+          'Purchase Price (KES)',
+          'Selling Price (KES)',
+          'Quantity',
+          'Reorder Level',
+        ];
+    const rows = filteredBooks.map((b) =>
+      isCashier
+        ? [
+            b.title,
+            b.author,
+            b.publisher,
+            b.category,
+            b.isbn || '',
+            b.barcode || '',
+            b.selling_price,
+            b.quantity,
+            b.reorder_level,
+          ]
+        : [
+            b.title,
+            b.author,
+            b.publisher,
+            b.category,
+            b.isbn || '',
+            b.barcode || '',
+            b.purchase_price,
+            b.selling_price,
+            b.quantity,
+            b.reorder_level,
+          ]
+    );
     exportToCSV(`KitabuPOS_Inventory_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
     toast.success('Inventory catalog exported to CSV');
   };
@@ -229,7 +256,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       </div>
 
       {/* Valuation & Metrics Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className={`grid gap-3 ${currentUser?.role === 'cashier' ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'}`}>
         <div className="p-4 rounded-xl bg-white border border-neutral-200/90 shadow-xs">
           <span className="text-xs font-semibold text-neutral-500">Total Physical Copies</span>
           <p className="text-xl font-mono font-bold text-neutral-900 mt-1 tabular-nums">
@@ -246,21 +273,25 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           <span className="text-xs text-neutral-400">at selling price</span>
         </div>
 
-        <div className="p-4 rounded-xl bg-white border border-neutral-200/90 shadow-xs">
-          <span className="text-xs font-semibold text-neutral-500">Inventory Cost Value</span>
-          <p className="text-xl font-mono font-bold text-neutral-900 mt-1 tabular-nums">
-            {formatKES(totalCostValue)}
-          </p>
-          <span className="text-xs text-neutral-400">capital tied in stock</span>
-        </div>
+        {currentUser?.role !== 'cashier' && (
+          <>
+            <div className="p-4 rounded-xl bg-white border border-neutral-200/90 shadow-xs">
+              <span className="text-xs font-semibold text-neutral-500">Inventory Cost Value</span>
+              <p className="text-xl font-mono font-bold text-neutral-900 mt-1 tabular-nums">
+                {formatKES(totalCostValue)}
+              </p>
+              <span className="text-xs text-neutral-400">capital tied in stock</span>
+            </div>
 
-        <div className="p-4 rounded-xl bg-white border border-neutral-200/90 shadow-xs">
-          <span className="text-xs font-semibold text-neutral-500">Potential Gross Margin</span>
-          <p className="text-xl font-mono font-bold text-emerald-600 mt-1 tabular-nums">
-            {potentialMargin}%
-          </p>
-          <span className="text-xs text-neutral-400">projected store markup</span>
-        </div>
+            <div className="p-4 rounded-xl bg-white border border-neutral-200/90 shadow-xs">
+              <span className="text-xs font-semibold text-neutral-500">Potential Gross Margin</span>
+              <p className="text-xl font-mono font-bold text-emerald-600 mt-1 tabular-nums">
+                {potentialMargin}%
+              </p>
+              <span className="text-xs text-neutral-400">projected store markup</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Filter and Search Bar */}
@@ -364,7 +395,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                 <th className="px-4 py-3">Book Details</th>
                 <th className="px-3 py-3">Category</th>
                 <th className="px-3 py-3 text-right">Selling Price</th>
-                <th className="px-3 py-3 text-right">Cost Price</th>
+                {currentUser?.role !== 'cashier' && (
+                  <th className="px-3 py-3 text-right">Cost Price</th>
+                )}
                 <th className="px-3 py-3 text-center">Stock</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -372,7 +405,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
             <tbody className="divide-y divide-neutral-100">
               {filteredBooks.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center text-neutral-400">
+                  <td colSpan={currentUser?.role === 'cashier' ? 6 : 7} className="px-4 py-16 text-center text-neutral-400">
                     <Boxes className="w-10 h-10 mx-auto text-neutral-300 mb-2" />
                     <p className="text-sm font-semibold text-neutral-700">No books found</p>
                     <p className="text-xs text-neutral-500 mt-1">
@@ -428,9 +461,11 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                         {formatKES(book.selling_price)}
                       </td>
 
-                      <td className="px-3 py-3 text-right font-mono text-neutral-600 tabular-nums">
-                        {formatKES(book.purchase_price)}
-                      </td>
+                      {currentUser?.role !== 'cashier' && (
+                        <td className="px-3 py-3 text-right font-mono text-neutral-600 tabular-nums">
+                          {formatKES(book.purchase_price)}
+                        </td>
+                      )}
 
                       <td className="px-3 py-3 text-center">
                         <span

@@ -94,6 +94,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
 
   // Backup & Integrity state
+  const [backupSchedule, setBackupSchedule] = useState<'daily' | 'weekly' | 'manual'>(
+    settings?.backup_schedule || 'daily'
+  );
+  const [backupFolderPath, setBackupFolderPath] = useState<string>(
+    settings?.backup_folder_path || ''
+  );
+  const [electronPaths, setElectronPaths] = useState<{ userData?: string; dbPath?: string; backupDir?: string } | null>(null);
+  const [isAutoBackingUp, setIsAutoBackingUp] = useState(false);
   const [integrityStatus, setIntegrityStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [isCheckingIntegrity, setIsCheckingIntegrity] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
@@ -130,10 +138,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setTaxRate(settings.tax_rate?.toString() || '0');
       setDefaultReorderLevel(settings.default_reorder_level?.toString() || '5');
       setSessionTimeout(settings.session_timeout_minutes?.toString() || '15');
+      setBackupSchedule(settings.backup_schedule || 'daily');
+      setBackupFolderPath(settings.backup_folder_path || '');
     }
     (async () => {
       const ts = await getLastBackupTimestamp();
       setLastBackup(ts);
+      if ((window as any).electronAPI?.getAppPaths) {
+        try {
+          const paths = await (window as any).electronAPI.getAppPaths();
+          setElectronPaths(paths);
+        } catch {}
+      }
     })();
   }, [settings]);
 
@@ -177,6 +193,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           tax_rate: parseFloat(taxRate) || 0,
           default_reorder_level: parseInt(defaultReorderLevel, 10) || 5,
           session_timeout_minutes: parseInt(sessionTimeout, 10) || 15,
+          backup_schedule: backupSchedule,
+          backup_folder_path: backupFolderPath.trim() || undefined,
         },
         currentUser?.id || 1,
         currentUser?.full_name || 'Admin'
@@ -187,6 +205,62 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       toast.error(err.message || 'Failed to save settings');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSelectSecondaryFolder = async () => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.selectBackupFolder) {
+      try {
+        const folder = await electronAPI.selectBackupFolder();
+        if (folder) {
+          setBackupFolderPath(folder);
+          toast.success(`Secondary backup folder chosen: ${folder}`);
+        }
+      } catch (err: any) {
+        toast.error(`Could not choose folder: ${err.message}`);
+      }
+    }
+  };
+
+  const handleRunVerifiedBackupNow = async () => {
+    setIsAutoBackingUp(true);
+    try {
+      const binary = await exportDatabaseBinary();
+      const integrity = await checkDatabaseIntegrity();
+      if (!integrity.ok) {
+        throw new Error(`Database integrity verification failed: ${integrity.message}`);
+      }
+
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.writeAutoBackup) {
+        const res = await electronAPI.writeAutoBackup(binary, backupFolderPath.trim(), backupSchedule);
+        if (!res.success) {
+          throw new Error(res.error || 'Failed to save auto backup');
+        }
+        toast.success(`Verified SQLite backup saved to ${res.filePath}`);
+      } else {
+        const d = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `KitabuPOS_Backup_${d}.sqlite`;
+        const blob = new Blob([binary as any], { type: 'application/x-sqlite3' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success('Verified SQLite backup downloaded successfully!');
+      }
+
+      const ts = await getLastBackupTimestamp();
+      setLastBackup(ts);
+      await onRefreshData();
+    } catch (err: any) {
+      toast.error(`Backup failed: ${err.message}`);
+    } finally {
+      setIsAutoBackingUp(false);
     }
   };
 
@@ -300,13 +374,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleExecuteCleanData = async () => {
-    if (cleanConfirmText !== 'CONFIRM') return;
+    if (cleanConfirmText !== 'DELETE ALL STORE DATA') return;
 
     setIsCleaning(true);
     try {
       const res = await cleanBusinessDatabase(
         currentUser?.id || 1,
-        currentUser?.full_name || 'Admin'
+        currentUser?.full_name || 'Admin',
+        cleanConfirmText
       );
       toast.success(
         `Business records cleared! Safety backup (${Math.round(
@@ -817,9 +892,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <Database className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="font-bold text-base text-neutral-900">Backup Status</h4>
-                <p className="text-xs text-neutral-500">
-                  Last recorded backup:{' '}
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-base text-neutral-900">Database Backup Status</h4>
+                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold uppercase bg-neutral-100 text-neutral-700">
+                    {backupSchedule} Schedule
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Last verified backup:{' '}
                   <strong className="text-neutral-800">
                     {lastBackup ? formatDateTime(lastBackup) : 'Never recorded'}
                   </strong>
@@ -827,14 +907,105 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
 
-            <Button
-              variant="primary"
-              onClick={handleDownloadBinaryBackup}
-              className="min-h-[44px]"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download SQLite .db File</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                onClick={handleRunVerifiedBackupNow}
+                loading={isAutoBackingUp}
+                className="min-h-[44px]"
+              >
+                <Database className="w-4 h-4" />
+                <span>Run Verified Backup Now</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Automatic Backup Configuration & Retention */}
+          <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-4">
+            <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-neutral-700" />
+              <span>Automated Backup Schedule & Safe Retention</span>
+            </h4>
+            <p className="text-xs text-neutral-600">
+              KitabuPOS writes verified SQLite snapshots with automated rotation (keeps 14 daily + 8 weekly backups).
+              Backups trigger automatically on app startup if overdue, hourly during operation, and upon app quit.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+                  Backup Frequency Schedule
+                </label>
+                <select
+                  value={backupSchedule}
+                  onChange={(e) => setBackupSchedule(e.target.value as any)}
+                  className="w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200 bg-white focus:border-neutral-900"
+                >
+                  <option value="daily">Daily (Overdue warning after 2 days; keeps 14 daily)</option>
+                  <option value="weekly">Weekly (Overdue warning after 8 days; keeps 8 weekly)</option>
+                  <option value="manual">Manual (Backups taken on demand by administrator)</option>
+                </select>
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  A persistent banner appears across the till if a backup has not completed within the threshold.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+                  Primary Storage Location
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={electronPaths?.backupDir || 'UserData/Backups (App Local Storage)'}
+                  className="w-full min-h-[44px] px-3.5 py-2 text-xs rounded-lg border border-neutral-200 bg-neutral-100 text-neutral-600 font-mono"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  Protected local directory preserved during app updates.
+                </p>
+              </div>
+            </div>
+
+            {/* Optional Secondary Backup Folder (e.g. Flash Drive) */}
+            <div className="pt-3 border-t border-neutral-100">
+              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
+                Secondary Backup Destination Folder (e.g., USB Flash Drive / External Drive)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="e.g. D:\KitabuPOS_Backups or /media/usb"
+                  value={backupFolderPath}
+                  onChange={(e) => setBackupFolderPath(e.target.value)}
+                  className="flex-1 min-h-[44px] px-3.5 py-2 text-sm font-mono rounded-lg border border-neutral-200 bg-white focus:border-neutral-900"
+                />
+                {(window as any).electronAPI?.selectBackupFolder && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleSelectSecondaryFolder}
+                    className="shrink-0 min-h-[44px]"
+                  >
+                    <span>Browse...</span>
+                  </Button>
+                )}
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1">
+                When specified, every automatic and manual backup is also mirrored to this folder for offsite recovery.
+              </p>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <Button
+                variant="primary"
+                onClick={() => handleSaveAllSettings()}
+                loading={isSaving}
+                className="min-h-[40px] text-xs"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span>Save Backup Preferences</span>
+              </Button>
+            </div>
           </div>
 
           {/* Backup & Export Options */}
@@ -842,7 +1013,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
               <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
                 <HardDrive className="w-4 h-4 text-neutral-600" />
-                <span>Binary SQLite Database (.sqlite)</span>
+                <span>Direct SQLite Database Download (.sqlite)</span>
               </h4>
               <p className="text-xs text-neutral-500">
                 Exact binary snapshot of all SQLite tables, indexes, and transactions. Can be opened in
@@ -1042,14 +1213,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div className="pt-2 border-t border-neutral-100">
             <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
-              Type <strong className="font-mono text-rose-600">CONFIRM</strong> to proceed:
+              Type <strong className="font-mono text-rose-600">DELETE ALL STORE DATA</strong> to proceed:
             </label>
             <input
               type="text"
               autoFocus
               value={cleanConfirmText}
               onChange={(e) => setCleanConfirmText(e.target.value)}
-              placeholder="CONFIRM"
+              placeholder="DELETE ALL STORE DATA"
               className="w-full min-h-[44px] px-3.5 py-2 text-sm font-mono font-bold rounded-lg border-2 border-neutral-300 focus:border-rose-500 focus:outline-none"
             />
           </div>
@@ -1064,7 +1235,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </Button>
             <Button
               variant="danger"
-              disabled={cleanConfirmText !== 'CONFIRM' || isCleaning}
+              disabled={cleanConfirmText !== 'DELETE ALL STORE DATA' || isCleaning}
               loading={isCleaning}
               onClick={handleExecuteCleanData}
             >

@@ -1,6 +1,6 @@
 # KitabuPOS Operator & User Manual
 
-Welcome to **KitabuPOS**, an offline bookshop management system engineered for high-speed counter sales, accurate inventory tracking, publisher deliveries, and financial profitability reporting.
+Welcome to **KitabuPOS**, an offline bookshop management system engineered for high-speed counter sales, accurate inventory tracking, publisher deliveries, operational expenses, and financial profitability reporting.
 
 ---
 
@@ -8,36 +8,39 @@ Welcome to **KitabuPOS**, an offline bookshop management system engineered for h
 
 ```
 [Morning Opening]
-  1. Login with Cashier or Admin credentials.
-  2. Review low-stock alerts on Store Dashboard.
-  3. Verify receipt printer paper roll.
+  1. Login with Staff credentials (Administrator, Store Manager, or Cashier).
+  2. Review any persistent warning banners (e.g. Overdue Database Backup).
+  3. Review low-stock alerts on Store Dashboard.
+  4. Verify thermal receipt printer paper roll.
 
 [During Operating Hours]
-  1. Point of Sale (POS): Scan barcode or search title -> Tender Cash / M-Pesa -> Print Receipt.
+  1. Point of Sale (POS): Scan barcode or search title -> Enter payment -> Print Receipt.
   2. Deliveries: Go to Purchases -> Enter Goods Received Note (GRN) -> Inventory auto-increments.
-  3. Adjustments: Log damages, returns, or write-offs with audit notes.
+  3. Stock Adjustments: Log damages, returns, or stock corrections with audit notes.
   4. Operating Expenses: Record petty cash, rent, transport, or casual labor expenses.
 
 [Evening Close of Day]
-  1. Review Financial Reports -> Daily P&L and Sales Ledger.
-  2. Settings & Backups -> Click "Download .sqlite Database Backup".
-  3. Copy the backup file to a designated external USB flash drive.
+  1. Review Financial Reports -> Daily Cash Up Report and Sales Ledger.
+  2. Database Backup: Backups occur automatically to <userData>/Backups.
+  3. If using an external USB drive, plug it in to mirror the verified backup.
 ```
 
 ---
 
 ## 2. Navigation & Keyboard Shortcuts
 
-| Shortcut | Screen | Description |
-|---|---|---|
-| **F2** | Point of Sale (POS) | Jump straight to the sales cash register |
-| **Alt + D** | Store Dashboard | High-level metrics, revenue, inventory valuation |
-| **Alt + I** | Inventory | Catalog, book registration, stock adjustments |
-| **Alt + S** | Purchases & Deliveries | Goods Received Notes, publisher invoices |
-| **Alt + E** | Shop Expenses | Operational expense recording |
-| **Alt + R** | Financial Reports | Profit & Loss, sales ledger, bestsellers, void audits |
-| **Alt + U** | Staff & Roles | User account creation and role permissions |
-| **Alt + T** | Settings & Backups | Shop details, receipt headers, SQLite backup |
+| Shortcut | Screen | Required Permission | Description |
+|---|---|---|---|
+| **F2** | Point of Sale (POS) | Cashier, Manager, Admin | Jump straight to the sales cash register |
+| **Alt + D** | Store Dashboard | Manager, Admin | High-level metrics, revenue, inventory valuation |
+| **Alt + I** | Inventory | Manager, Admin | Catalog, book registration, stock adjustments |
+| **Alt + S** | Purchases & Deliveries | Manager, Admin | Goods Received Notes, publisher invoices |
+| **Alt + E** | Shop Expenses | Manager, Admin | Operational expense recording |
+| **Alt + R** | Financial Reports | Manager, Admin | Profit & Loss, sales ledger, bestsellers, void audits |
+| **Alt + U** | Staff & Roles | Admin only | User account creation and role permissions |
+| **Alt + T** | Settings & Backups | Admin only | Shop details, receipt headers, SQLite backup & rotation |
+
+*Note: Cashier accounts are restricted strictly to the POS register (F2). Shortcuts to managerial views are gated and inaccessible to cashiers.*
 
 ---
 
@@ -45,72 +48,62 @@ Welcome to **KitabuPOS**, an offline bookshop management system engineered for h
 
 ### A. Point of Sale (POS Register)
 1. **Adding Items to Cart**:
-   - **Barcode / ISBN Scanner**: Aim scanner at the book's barcode. Item will be detected and added to the cart instantly.
+   - **Barcode / ISBN Scanner**: Aim scanner at the book's barcode. Item is detected and added to the cart instantly.
    - **Manual Search**: Type title, author, or ISBN into the search bar. Click the book card or press Enter.
    - **Catalog Browser**: Filter by category (e.g. KCSE Set Books, CBC Primary, Dictionaries, Stationery).
-2. **Adjusting Cart Quantities & Line Discounts**:
-   - Use the `+` and `−` buttons to adjust units. Stock limits are enforced in real time (cannot sell more than available physical inventory).
+2. **Cart Quantities & Line Discounts**:
+   - Use the `+` and `−` buttons to adjust units. Stock limits are enforced in real time (cannot sell more than physical stock).
+   - Cashiers have an enforced maximum discount percentage (default: 10%). Any discount exceeding this limit is rejected by the database transaction.
 3. **Checkout & Payment Options**:
    - Click **Proceed to Payment**.
-   - **Cash Sale**: Type amount tendered or click a quick-cash button (e.g., KES 1,000, KES 2,000, Exact). The change due is calculated automatically.
-   - **M-Pesa Sale**: Select M-Pesa tab. Enter the customer's M-Pesa transaction confirmation code (e.g., `SHG892KLO1`).
-   - **Split Payment**: Enter partial cash and partial M-Pesa amounts.
+   - **Cash Sale**: Type amount tendered or click quick-cash buttons. Change due is calculated automatically (change is only allowed on cash overpayments).
+   - **M-Pesa Sale**: Enter the customer's 10-character alphanumeric transaction reference (e.g., `SHG892KLO1`). The database rejects duplicate or malformed codes.
+   - **Split Payment**: Enter broken-down cash, M-Pesa, or card amounts.
 4. **Thermal Receipt Printing**:
-   - Upon completion, the printable receipt modal pops up with your store logo, receipt number, date, cashier name, itemized lines, and return policy.
-   - Click **Print Receipt** (or press Enter).
+   - The database commits the sale and flushes persistence before presenting the receipt modal.
+   - Click **Print Receipt** (or press Enter) to send to your 80mm/58mm thermal printer.
 
 ### B. Book Inventory Management
-1. **Adding a New Book Manually**:
+1. **Adding a New Book**:
    - Click **Inventory** -> **Add New Book**.
    - Required fields: **Title**, **Author**, **Publisher**, **Selling Price**.
    - Optional fields: **ISBN**, **Barcode**, **Edition**, **Cost Price**, **Initial Opening Stock**, **Reorder Level**.
-   - Category: Choose from standard bookshop categories or click **+ Custom** to enter a specialized category.
 2. **Bulk CSV Inventory Import**:
-   - Click **Import CSV**.
-   - Click **Download Template (.csv)** to obtain the spreadsheet format.
-   - Populate your books in Excel or Google Sheets and save as CSV.
-   - Click **Select .csv File** to preview validated rows and detect duplicates.
-   - Click **Import Valid Records** to commit to the SQLite database.
-3. **Stock Adjustments & Write-Offs**:
-   - Locate the book in Inventory -> Click the **Adjust** button.
-   - Choose adjustment type:
-     - `damage` (Damaged / Soiled copies)
-     - `adjustment` (Physical inventory count correction)
-     - `customer_return` (Customer return / exchange)
-     - `purchase_return` (Return to publisher)
-   - Enter quantity change (+ or −) and an explanation note.
-   - The adjustment is committed atomically and recorded in the audit trail.
+   - Click **Import CSV** and use `kitabupos_inventory_template.csv`.
+   - Preview validated rows and detect duplicates before committing.
+3. **CSV Inventory Export**:
+   - Export full inventory for stocktaking. Purchase cost prices are automatically masked when exported by Cashier accounts.
+4. **Stock Adjustments & Write-Offs**:
+   - Locate the book in Inventory -> Click **Adjust**.
+   - Choose adjustment type: `damage`, `adjustment`, `customer_return`, or `purchase_return`.
+   - Enter quantity change (+ or −) and reason note. Recorded in the immutable audit trail.
 
 ### C. Publisher Purchases & Goods Received Notes (GRN)
-1. Register your publisher or supplier in the **Suppliers** tab (Name, Phone, Email).
+1. Register publishers or suppliers in the **Suppliers** section.
 2. In **Purchases**, click **Receive New Delivery (GRN)**.
 3. Select Supplier and enter their Invoice / Delivery Note number.
-4. Add the titles delivered with received quantities and invoice unit costs.
-5. Enter amount paid (Paid in full, Partial, or Unpaid).
-6. Click **Save & Receive Stock**. Inventory counts and cost prices are updated automatically.
+4. Add received books with quantities and unit purchase costs.
+5. Save delivery to atomically increment inventory and update latest unit costs.
 
 ### D. Store Operating Expenses
 1. Click **Expenses** -> **Record New Expense**.
-2. Select category:
-   - Rent
-   - Electricity & Water
-   - Salaries & Casuals
-   - Transport & Delivery
-   - Packaging & Carrier Bags
-   - Licences & County Council Fees
-   - Internet & Airtime
-   - Maintenance & Repairs
-   - Office & Stationery
-   - Miscellaneous
-3. Enter amount (KES), date, and description.
-4. All expenses are deducted from Gross Profit to compute Net Operating Profit.
+2. Select category (Rent, Electricity & Water, Salaries & Casuals, Transport, Packaging Bags, Licenses, Maintenance).
+3. Enter amount (KES), date, and description. Automatically factored into Net Operating Profit.
 
-### E. Financial & Audit Reports
-- **Profit & Loss**: Revenue, Cost of Goods Sold (COGS), Gross Profit Margin (%), Operating Expenses, and Net Operating Profit.
-- **Sales Journal**: Full chronological transaction history with receipt reprint controls.
-- **Top Selling Titles**: Most popular books ranked by quantity sold and revenue generated.
-- **Void Audit**: Every voided transaction with cashier details, restocked inventory count, and cancellation rationale.
+### E. Financial Reports & Analytics
+- **Profit & Loss**: Operating Revenue (excluding VAT), Cost of Goods Sold (COGS), Gross Profit, Operating Expenses, and Net Operating Profit.
+- **Cash Up Report**: Daily reconciliation of cash, M-Pesa, card, voids, and cash expenses for end-of-shift balancing.
+- **Nairobi Date Filtering**: All financial summaries filter dates according to East Africa Time (`UTC+3`).
 
-### F. Staff Accounts & Permissions
-- **Admin**: Full access to all modules, settings, user accounts, inventory, and database restoration.
-- **Cashier**: Access to POS Register for processing sales. Restrained from accessing publisher wholesale costs, store profit margins, and administrative user controls.
+### F. Staff Accounts & Security
+- **Administrator**: Full system access, staff management, store settings, and database disaster recovery.
+- **Store Manager**: Full inventory management, purchasing deliveries, operational expenses, reports, and sales voids. Cannot manage staff accounts or wipe store data.
+- **Cashier**: Restricted strictly to POS sales. Cannot view wholesale purchase costs, profit margins, reports, or administrative settings.
+- **5-Failure Lockout Protection**: 5 consecutive incorrect password or PIN unlock attempts lock the account for 5 minutes (doubling on repeated lockout events). Lockout state is persisted in the database.
+- **Inactivity Auto-Lock**: Screen locks after the configured timeout (default: 15 minutes) to protect unattended tills.
+
+### G. Backup & Disaster Recovery
+- **Automatic Backups**: The system writes verified `.sqlite` snapshots to `<userData>/Backups` with automatic rotation (keeps 14 daily + 8 weekly files).
+- **Secondary Backup Folder**: An external folder (such as a USB flash drive) can be selected in Settings to mirror all backups automatically.
+- **Persistent Overdue Banner**: A warning banner appears at the top of the till if no verified backup has completed within 2 days (daily schedule) or 8 days (weekly schedule). Click **Back Up Now** to trigger an immediate verified snapshot.
+- **Integrity Verification**: Candidates must pass `PRAGMA integrity_check` before any restore, clean, or migration.

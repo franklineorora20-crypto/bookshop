@@ -173,3 +173,20 @@ export function exportToCSV(filename: string, headers: string[], rows: (string |
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+export function exportBooksToCSV(books: any[], filename?: string, userRole?: string): void {
+  const isCashier = userRole === 'cashier';
+  const headers = isCashier
+    ? ['Title', 'Author', 'Publisher', 'Category', 'ISBN', 'Barcode', 'Selling Price (KES)', 'Quantity', 'Reorder Level']
+    : ['Title', 'Author', 'Publisher', 'Category', 'ISBN', 'Barcode', 'Purchase Price (KES)', 'Selling Price (KES)', 'Quantity', 'Reorder Level'];
+
+  const rows = books.map((b) => {
+    if (isCashier) {
+      return [b.title, b.author, b.publisher, b.category, b.isbn || '', b.barcode || '', b.selling_price, b.quantity, b.reorder_level];
+    }
+    return [b.title, b.author, b.publisher, b.category, b.isbn || '', b.barcode || '', b.purchase_price, b.selling_price, b.quantity, b.reorder_level];
+  });
+
+  exportToCSV(filename || `KitabuPOS_Inventory_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
+}
+

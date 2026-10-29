@@ -18,6 +18,7 @@ import { LockScreen } from './components/auth/LockScreen.tsx';
 import { ReceiptModal } from './components/pos/ReceiptModal.tsx';
 import { OfflineIndicator } from './components/common/OfflineIndicator.tsx';
 import { PWAInstallPrompt } from './components/common/PWAInstallPrompt.tsx';
+import { BackupBanner } from './components/common/BackupBanner.tsx';
 import { Book, Sale, ShopSettings, User } from './types/index.ts';
 import {
   getDatabase,
@@ -25,6 +26,8 @@ import {
   getDashboardMetrics,
   getShopSettings,
   getLastBackupTimestamp,
+  exportDatabaseBinary,
+  checkDatabaseIntegrity,
 } from './db/database.ts';
 import { FirstRunWizard } from './components/setup/FirstRunWizard.tsx';
 import { getStoredSession, saveSession, hasPermission } from './services/auth.ts';
@@ -76,12 +79,27 @@ export default function App() {
   // Initial load
   useEffect(() => {
     const session = getStoredSession();
-    if (session && session.user) {
-      setCurrentUser(session.user);
-      setIsLocked(session.isLocked || false);
+    if (session) {
+      setCurrentUser({
+        id: session.userId,
+        username: session.name,
+        full_name: session.name,
+        role: session.role,
+        is_active: 1,
+        created_at: '',
+      });
+      setIsLocked(session.locked || false);
     }
     refreshAllData();
   }, [refreshAllData]);
+
+  // Gate all view routes by role (cashiers restricted to POS)
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === 'cashier' && activeTab !== 'pos') {
+      setActiveTab('pos');
+    }
+  }, [currentUser, activeTab]);
 
   // Inactivity watchdog
   useEffect(() => {
@@ -101,7 +119,7 @@ export default function App() {
     const checkInterval = setInterval(() => {
       if (Date.now() - lastActivityRef.current >= timeoutMs) {
         setIsLocked(true);
-        saveSession({ user: currentUser, isLocked: true, lastActive: Date.now() });
+        saveSession({ userId: currentUser.id, role: currentUser.role, name: currentUser.full_name, locked: true });
       }
     }, 10000);
 
@@ -113,7 +131,7 @@ export default function App() {
     };
   }, [currentUser, isLocked, shopSettings]);
 
-  // Global Keyboard Shortcuts (F2 for POS, etc.)
+  // Global Keyboard Shortcuts (F2 for POS, gated Alt shortcuts)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!currentUser || isLocked) return;
@@ -121,10 +139,10 @@ export default function App() {
       if (e.key === 'F2') {
         e.preventDefault();
         setActiveTab('pos');
-      } else if (e.altKey && e.key.toLowerCase() === 'd') {
+      } else if (e.altKey && e.key.toLowerCase() === 'd' && hasPermission(currentUser.role, 'CAN_VIEW_PROFITABILITY')) {
         e.preventDefault();
         setActiveTab('dashboard');
-      } else if (e.altKey && e.key.toLowerCase() === 'i') {
+      } else if (e.altKey && e.key.toLowerCase() === 'i' && hasPermission(currentUser.role, 'CAN_MANAGE_INVENTORY')) {
         e.preventDefault();
         setActiveTab('inventory');
       } else if (e.altKey && e.key.toLowerCase() === 's' && hasPermission(currentUser.role, 'CAN_MANAGE_PURCHASES')) {
@@ -160,7 +178,7 @@ export default function App() {
   const handleLock = () => {
     if (!currentUser) return;
     setIsLocked(true);
-    saveSession({ user: currentUser, isLocked: true, lastActive: Date.now() });
+    saveSession({ userId: currentUser.id, role: currentUser.role, name: currentUser.full_name, locked: true });
   };
 
   // Handle Unlock
@@ -168,8 +186,63 @@ export default function App() {
     if (!currentUser) return;
     setIsLocked(false);
     lastActivityRef.current = Date.now();
-    saveSession({ user: currentUser, isLocked: false, lastActive: Date.now() });
+    saveSession({ userId: currentUser.id, role: currentUser.role, name: currentUser.full_name, locked: false });
   };
+
+  // Automated & Manual Backup Handler
+  const handleBackupNow = useCallback(async () => {
+    try {
+      const binary = await exportDatabaseBinary();
+      const integrity = await checkDatabaseIntegrity();
+      if (!integrity.ok) {
+        console.error('Integrity check failed prior to backup:', integrity.message);
+        return;
+      }
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.writeAutoBackup) {
+        await electronAPI.writeAutoBackup(
+          binary,
+          shopSettings?.backup_folder_path,
+          shopSettings?.backup_schedule || 'daily'
+        );
+      }
+      const ts = await getLastBackupTimestamp();
+      setLastBackupTime(ts);
+    } catch (err) {
+      console.error('Automated backup error:', err);
+    }
+  }, [shopSettings]);
+
+  // Hook Electron IPC events for background backups (quit, startup overdue, hourly)
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (!electronAPI) return;
+
+    const unbindQuit = electronAPI.onQuitBackupRequested?.(async () => {
+      try {
+        const binary = await exportDatabaseBinary();
+        electronAPI.sendQuitBackupComplete?.(binary);
+      } catch {
+        electronAPI.sendQuitBackupComplete?.(new Uint8Array(0));
+      }
+    });
+
+    const unbindCheck = electronAPI.onBackupCheckRequested?.(async () => {
+      if (shopSettings?.backup_schedule === 'manual') return;
+      const last = await getLastBackupTimestamp();
+      const lastMs = last ? new Date(last).getTime() : 0;
+      const thresholdHours = shopSettings?.backup_schedule === 'weekly' ? 168 : 24;
+      const isDue = Date.now() - lastMs > thresholdHours * 60 * 60 * 1000;
+      if (isDue) {
+        await handleBackupNow();
+      }
+    });
+
+    return () => {
+      unbindQuit?.();
+      unbindCheck?.();
+    };
+  }, [shopSettings, handleBackupNow]);
 
   // If first-time run and setup wizard not completed, display wizard first!
   if (!loading && shopSettings && !shopSettings.is_setup_completed) {
@@ -181,7 +254,7 @@ export default function App() {
           setCurrentUser(adminUser);
           setIsLocked(false);
           lastActivityRef.current = Date.now();
-          saveSession({ user: adminUser, isLocked: false, lastActive: Date.now() });
+          saveSession({ userId: adminUser.id, role: adminUser.role, name: adminUser.full_name, locked: false });
           refreshAllData();
         }}
       />
@@ -196,7 +269,7 @@ export default function App() {
           setCurrentUser(user);
           setIsLocked(false);
           lastActivityRef.current = Date.now();
-          saveSession({ user, isLocked: false, lastActive: Date.now() });
+          saveSession({ userId: user.id, role: user.role, name: user.full_name, locked: false });
         }}
       />
     );
@@ -266,6 +339,14 @@ export default function App() {
           onNewSaleClick={() => setActiveTab('pos')}
           lastBackupTime={lastBackupTime}
           onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
+        />
+
+        {/* Persistent Overdue Backup Alert Banner */}
+        <BackupBanner
+          lastBackupTime={lastBackupTime}
+          backupSchedule={shopSettings?.backup_schedule || 'daily'}
+          onBackupNow={handleBackupNow}
+          onOpenSettings={() => setActiveTab('settings')}
         />
 
         <main className="flex-1 overflow-y-auto">

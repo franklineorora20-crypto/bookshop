@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
-    "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=esm --outdir=dist-electron --external:electron",
+    "build:electron": "esbuild electron/main.ts --bundle --platform=node --format=esm --outfile=dist-electron/main.js --external:electron && esbuild electron/preload.ts --bundle --platform=node --format=cjs --outfile=dist-electron/preload.cjs --external:electron",
     "preview": "vite preview",
-    "test": "node --test src/utils/calculations.test.ts src/utils/csv.test.ts src/db/database.test.ts",
+    "test": "node --test src/utils/calculations.test.ts src/utils/csv.test.ts src/db/database.test.ts src/db/hardening.test.ts",
     "clean": "node -e \"const fs=require('fs'); for (const p of ['dist','dist-electron','release']) fs.rmSync(p,{recursive:true,force:true})\"",
     "build:win": "npm run clean && npm run build && npm run build:electron && electron-builder --win nsis",
     "build:mac": "npm run clean && npm run build && npm run build:electron && electron-builder --mac",
@@ -17,15 +17,15 @@
     "build:all": "npm run clean && npm run build && npm run build:electron && electron-builder -mwl",
     "lint": "tsc --noEmit"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/canvas-confetti": "^1.9.0",
     "@vitejs/plugin-react": "^6.1.1",
     "bcryptjs": "^3.0.3",
     "canvas-confetti": "^1.9.4",
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
@@ -36,7 +36,6 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
-    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

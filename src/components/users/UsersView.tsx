@@ -60,26 +60,42 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
       return;
     }
 
-    if (password.trim().length < 6) {
-      setError('Password must be at least 6 characters long.');
+    if (password.trim().length < 8) {
+      setError('Password must be at least 8 characters long.');
       return;
     }
 
-    if (pin.trim() && pin.trim().length < 4) {
-      setError('Quick lock PIN must be at least 4 digits if provided.');
-      return;
+    if (pin.trim()) {
+      const p = pin.trim();
+      if (!/^\d{4,6}$/.test(p)) {
+        setError('Quick lock PIN must be 4 to 6 digits.');
+        return;
+      }
+      if (p === '0000' || p === '1234') {
+        setError('PIN cannot be 0000 or 1234.');
+        return;
+      }
+      if (/^(\d)\1+$/.test(p)) {
+        setError('PIN cannot consist of repeated identical digits.');
+        return;
+      }
+      if ('0123456789'.includes(p) || '9876543210'.includes(p)) {
+        setError('PIN cannot be sequential digits.');
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
-      const password_hash = bcrypt.hashSync(password.trim(), 8);
+      const password_hash = bcrypt.hashSync(password.trim(), 10);
+      const pin_hash = pin.trim() ? bcrypt.hashSync(pin.trim(), 10) : undefined;
       await addUser(
         {
           username: username.trim().toLowerCase(),
           full_name: fullName.trim(),
           role,
           password_hash,
-          pin: pin.trim() || undefined,
+          pin: pin_hash,
           is_active: 1,
         },
         currentUser?.id || 1,
@@ -180,7 +196,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
                     <span>Lock PIN:</span>
                   </span>
                   <span className="font-mono text-neutral-900 font-bold">
-                    {u.pin ? '••••' : 'Not set'}
+                    {u.has_pin || u.pin ? '••••' : 'Not set'}
                   </span>
                 </div>
                 <div className="flex justify-between text-neutral-600">
@@ -257,6 +273,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
                 className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-neutral-200 bg-white font-medium focus:border-neutral-900"
               >
                 <option value="cashier">Cashier (POS & Sales)</option>
+                <option value="manager">Store Manager (Inventory & Sales)</option>
                 <option value="admin">Administrator (Full Access)</option>
               </select>
             </div>

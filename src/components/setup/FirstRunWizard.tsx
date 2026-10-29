@@ -102,13 +102,32 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
           setError('Please create a secure password for your administrator account.');
           return false;
         }
-        if (adminPassword.length < 6) {
-          setError('Administrator password must be at least 6 characters.');
+        if (adminPassword.length < 8) {
+          setError('Administrator password must be at least 8 characters.');
           return false;
         }
         if (adminPassword !== confirmPassword) {
           setError('Passwords do not match. Please re-enter.');
           return false;
+        }
+        if (adminPin.trim()) {
+          const pinVal = adminPin.trim();
+          if (!/^\d{4,6}$/.test(pinVal)) {
+            setError('PIN must be 4 to 6 digits.');
+            return false;
+          }
+          if (pinVal === '0000' || pinVal === '1234') {
+            setError('PIN cannot be 0000 or 1234.');
+            return false;
+          }
+          if (/^(\d)\1+$/.test(pinVal)) {
+            setError('PIN cannot consist of repeated identical digits.');
+            return false;
+          }
+          if ('0123456789'.includes(pinVal) || '9876543210'.includes(pinVal)) {
+            setError('PIN cannot be sequential digits.');
+            return false;
+          }
         }
       }
     }
@@ -153,14 +172,15 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
       await updateShopSettings(updatedSettingsPayload, 1, 'System Administrator');
 
       if (adminPassword.trim()) {
-        const passwordHash = bcrypt.hashSync(adminPassword.trim(), 8);
+        const passwordHash = bcrypt.hashSync(adminPassword.trim(), 10);
+        const pinHash = adminPin.trim() ? bcrypt.hashSync(adminPin.trim(), 10) : undefined;
         await updateUser(
           1,
           {
             full_name: adminFullName.trim(),
             username: adminUsername.trim(),
             password_hash: passwordHash,
-            pin: adminPin.trim() || undefined,
+            pin: pinHash,
           },
           1,
           'System Administrator'
@@ -419,7 +439,7 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
                 <Input
                   label="Quick Lock PIN (4-6 digits, optional)"
                   maxLength={6}
-                  placeholder="e.g. 1234"
+                  placeholder="e.g. 5829"
                   value={adminPin}
                   onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
                 />

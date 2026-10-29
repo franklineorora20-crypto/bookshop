@@ -47,7 +47,8 @@ export function calculateCartTotals(
   // In Kenya, books are typically zero-rated/exempt from VAT, but stationery may carry 16% VAT if configured
   const taxTotal = taxRatePercent > 0 ? Math.round((taxableBase * (taxRatePercent / 100)) * 100) / 100 : 0;
   const grandTotal = Math.round((taxableBase + taxTotal) * 100) / 100;
-  const estimatedProfit = Math.round((grandTotal - cogsTotal) * 100) / 100;
+  // Profit calculation excludes VAT/tax
+  const estimatedProfit = Math.round((taxableBase - cogsTotal) * 100) / 100;
 
   return {
     subtotal: Math.round(subtotal * 100) / 100,

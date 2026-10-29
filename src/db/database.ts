@@ -1,16 +1,82 @@
 import initSqlJs from 'sql.js';
 import type { Database, SqlJsStatic } from 'sql.js';
+import bcrypt from 'bcryptjs';
 import { SCHEMA_SQL } from './schema.ts';
 import { getSeedQueries } from './seed.ts';
-import type { Book, Expense, Sale, SaleItem, ShopSettings, StockMovement, Supplier, User } from '../types/index.ts';
+import { calculateCartTotals, calculateChange } from '../utils/calculations.ts';
+import type {
+  Book,
+  Expense,
+  ExpenseCategory,
+  Sale,
+  SaleItem,
+  ShopSettings,
+  StockMovement,
+  StockMovementType,
+  Supplier,
+  User,
+  UserRole,
+} from '../types/index.ts';
 
 const DB_STORAGE_KEY = 'kitabupos_sqlite_db_v1';
 const BACKUP_TIMESTAMP_KEY = 'kitabupos_last_backup_time';
 
 let SQL: SqlJsStatic | null = null;
 let dbInstance: Database | null = null;
-let isInitializing = false;
 let initPromise: Promise<Database> | null = null;
+
+// ==========================================
+// Roles & Permissions Control (RBAC)
+// ==========================================
+
+export const PERMISSIONS = {
+  CAN_SELL: ['admin', 'manager', 'cashier'],
+  CAN_MANAGE_INVENTORY: ['admin', 'manager'],
+  CAN_ADJUST_STOCK: ['admin', 'manager'],
+  CAN_VOID_SALE: ['admin', 'manager'],
+  CAN_VIEW_PROFITABILITY: ['admin', 'manager'],
+  CAN_MANAGE_PURCHASES: ['admin', 'manager'],
+  CAN_MANAGE_EXPENSES: ['admin', 'manager'],
+  CAN_MANAGE_USERS: ['admin'],
+  CAN_RESTORE_DATABASE: ['admin'],
+  CAN_EDIT_SETTINGS: ['admin'],
+  CAN_CLEAN_DATABASE: ['admin'],
+  CAN_EXPORT_FINANCIALS: ['admin', 'manager'],
+} as const;
+
+export function hasPermission(role: UserRole, permissionKey: keyof typeof PERMISSIONS): boolean {
+  const allowedRoles = PERMISSIONS[permissionKey] as readonly string[];
+  return allowedRoles.includes(role);
+}
+
+export async function requirePermission(
+  userOrRoleOrId: { role?: UserRole; id?: number } | UserRole | number | null | undefined,
+  permissionKey: keyof typeof PERMISSIONS
+): Promise<void> {
+  let role: UserRole = 'admin';
+  if (typeof userOrRoleOrId === 'string') {
+    role = userOrRoleOrId as UserRole;
+  } else if (typeof userOrRoleOrId === 'number') {
+    const user = await runQueryOne<{ role: UserRole }>('SELECT role FROM users WHERE id = ?;', [userOrRoleOrId]);
+    if (user) {
+      role = user.role;
+    }
+  } else if (userOrRoleOrId && typeof userOrRoleOrId === 'object' && userOrRoleOrId.role) {
+    role = userOrRoleOrId.role;
+  }
+
+  if (!hasPermission(role, permissionKey)) {
+    throw new Error(`Unauthorized: Role "${role}" lacks permission "${permissionKey}".`);
+  }
+}
+
+export function extractUserId(userOrIdOrRole: any, defaultId = 1): number {
+  if (typeof userOrIdOrRole === 'number') return userOrIdOrRole;
+  if (userOrIdOrRole && typeof userOrIdOrRole === 'object' && userOrIdOrRole.id) {
+    return Number(userOrIdOrRole.id);
+  }
+  return defaultId;
+}
 
 // Helpers to save database to storage
 async function persistDbToStorage(db: Database): Promise<void> {
@@ -18,37 +84,10 @@ async function persistDbToStorage(db: Database): Promise<void> {
     const binary = db.export();
     if (typeof window !== 'undefined' && window.indexedDB) {
       await saveToIndexedDB(binary);
-    } else if (typeof localStorage !== 'undefined') {
-      // Fallback for smaller environments if needed
-      const base64 = uint8ArrayToBase64(binary);
-      try {
-        localStorage.setItem(DB_STORAGE_KEY, base64);
-      } catch {
-        // LocalStorage quota may be exceeded; IndexedDB handles large binaries
-      }
     }
   } catch (err) {
     console.error('Failed to persist SQLite database:', err);
   }
-}
-
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary_string = atob(base64);
-  const len = binary_string.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binary_string.charCodeAt(i);
-  }
-  return bytes;
 }
 
 // IndexedDB Storage Engine for robust local storage
@@ -92,6 +131,28 @@ async function loadFromIndexedDB(): Promise<Uint8Array | null> {
   }
 }
 
+// Binary Integrity Verifier
+export async function verifyDatabaseBinary(binary: Uint8Array): Promise<boolean> {
+  if (!binary || binary.byteLength === 0) return false;
+  if (!SQL) {
+    if (typeof window !== 'undefined') {
+      SQL = await initSqlJs({ locateFile: (file) => `/${file}` });
+    } else {
+      SQL = await initSqlJs();
+    }
+  }
+  try {
+    const testDb = new SQL.Database(binary);
+    const check = testDb.exec('PRAGMA integrity_check;');
+    const ok = check[0]?.values[0]?.[0] === 'ok';
+    testDb.close();
+    return ok;
+  } catch (e) {
+    console.error('Database binary integrity check failed:', e);
+    return false;
+  }
+}
+
 export async function getDatabase(): Promise<Database> {
   if (dbInstance) return dbInstance;
   if (initPromise) return initPromise;
@@ -110,16 +171,6 @@ export async function getDatabase(): Promise<Database> {
     let existingData: Uint8Array | null = null;
     if (typeof window !== 'undefined' && window.indexedDB) {
       existingData = await loadFromIndexedDB();
-    }
-    if (!existingData && typeof localStorage !== 'undefined') {
-      const base64 = localStorage.getItem(DB_STORAGE_KEY);
-      if (base64) {
-        try {
-          existingData = base64ToUint8Array(base64);
-        } catch (e) {
-          console.warn('Could not parse stored base64 DB:', e);
-        }
-      }
     }
 
     let db: Database;
@@ -153,58 +204,63 @@ export async function getDatabase(): Promise<Database> {
   return initPromise;
 }
 
-async function migrateDatabase(db: Database): Promise<void> {
-  // Ensure schema_migrations table exists
-  db.run(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);`);
-  const versionsRes = db.exec('SELECT version FROM schema_migrations ORDER BY version ASC;');
-  const appliedVersions = (versionsRes[0]?.values || []).map((v) => Number(v[0]));
-  const now = new Date().toISOString();
-
-  if (!appliedVersions.includes(1)) {
-    db.run(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, '${now}');`);
+export async function migrateDatabase(db: Database): Promise<void> {
+  // Verify backup before any migration
+  const preBackup = db.export();
+  const isValidBackup = await verifyDatabaseBinary(preBackup);
+  if (!isValidBackup) {
+    throw new Error('Pre-migration backup verification failed. Aborting migration.');
   }
 
-  if (!appliedVersions.includes(2)) {
-    // Migration 2: Remove customer credit dependencies safely and preserve existing genuine data
-    try {
-      const preMigBinary = db.export();
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('kitabupos_pre_migration_v2_backup', uint8ArrayToBase64(preMigBinary));
-      }
-    } catch (e) {
-      console.warn('Pre-migration backup warning:', e);
+  // Ensure migrations run with foreign_keys ON inside a transaction
+  db.run('PRAGMA foreign_keys = ON;');
+  db.run('BEGIN TRANSACTION;');
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);`);
+    const versionsRes = db.exec('SELECT version FROM schema_migrations ORDER BY version ASC;');
+    const appliedVersions = (versionsRes[0]?.values || []).map((v) => Number(v[0]));
+    const now = new Date().toISOString();
+
+    if (!appliedVersions.includes(1)) {
+      db.run(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, '${now}');`);
     }
 
-    db.run('BEGIN TRANSACTION;');
-    try {
-      // Drop credit_payments table if exists
+    if (!appliedVersions.includes(2)) {
       db.run('DROP TABLE IF EXISTS credit_payments;');
-      // Drop customers table if exists
       db.run('DROP TABLE IF EXISTS customers;');
-
       db.run(`INSERT INTO schema_migrations (version, applied_at) VALUES (2, '${now}');`);
-      db.run('COMMIT;');
-      await persistDbToStorage(db);
-    } catch (migErr) {
-      db.run('ROLLBACK;');
-      console.error('Migration v2 failed:', migErr);
-      throw migErr;
     }
-  }
 
-  if (!appliedVersions.includes(3)) {
-    // Migration 3: Remove manager account and enforce only admin and cashier logins
-    db.run('BEGIN TRANSACTION;');
-    try {
-      db.run("DELETE FROM users WHERE username = 'manager' OR role = 'manager';");
+    if (!appliedVersions.includes(3)) {
+      // Non-destructive migration v3:
+      // DO NOT delete manager users or accounts. Keep all users.
+      // Ensure partial unique index on non-voided sales payment_reference and auth_lockouts table exist
+      db.run(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_mpesa_unique ON sales(payment_reference)
+         WHERE is_voided = 0 AND payment_reference IS NOT NULL AND payment_reference != '';`
+      );
+      db.run(
+        `CREATE TABLE IF NOT EXISTS auth_lockouts (
+          identifier TEXT PRIMARY KEY,
+          failed_attempts INTEGER NOT NULL DEFAULT 0,
+          locked_until TEXT
+        );`
+      );
       db.run(`INSERT INTO schema_migrations (version, applied_at) VALUES (3, '${now}');`);
-      db.run('COMMIT;');
-      await persistDbToStorage(db);
-    } catch (migErr) {
-      db.run('ROLLBACK;');
-      console.error('Migration v3 failed:', migErr);
-      throw migErr;
     }
+
+    // Verify foreign key constraints are clean
+    const fkCheck = db.exec('PRAGMA foreign_key_check;');
+    if (fkCheck.length > 0 && fkCheck[0]?.values && fkCheck[0].values.length > 0) {
+      throw new Error('Foreign key violation detected during migration.');
+    }
+
+    db.run('COMMIT;');
+    await persistDbToStorage(db);
+  } catch (migErr) {
+    db.run('ROLLBACK;');
+    console.error('Migration failed and rolled back:', migErr);
+    throw migErr;
   }
 }
 
@@ -268,50 +324,63 @@ export async function exportDatabaseBinary(): Promise<Uint8Array> {
   const db = await getDatabase();
   const binary = db.export();
   const now = new Date().toISOString();
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(BACKUP_TIMESTAMP_KEY, now);
-  }
-  await runExecute("UPDATE shop_settings SET value = ? WHERE key = 'last_backup_at';", [now]);
+  await runExecute("INSERT INTO shop_settings (key, value) VALUES ('last_backup_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value;", [now]);
   return binary;
 }
 
 export async function getLastBackupTimestamp(): Promise<string | null> {
-  if (typeof localStorage !== 'undefined') {
-    const val = localStorage.getItem(BACKUP_TIMESTAMP_KEY);
-    if (val) return val;
-  }
   const setting = await runQueryOne<{ value: string }>("SELECT value FROM shop_settings WHERE key = 'last_backup_at'");
   return setting?.value || null;
 }
 
 // Restore Database from binary file
-export async function restoreDatabaseBinary(data: Uint8Array, adminUserId: number, adminName: string): Promise<{ ok: boolean; message: string }> {
+export async function restoreDatabaseBinary(
+  data: Uint8Array,
+  userOrIdOrRole?: { role: UserRole; id?: number } | UserRole | number,
+  adminName?: string
+): Promise<{ ok: boolean; message: string }> {
+  if (userOrIdOrRole) {
+    await requirePermission(userOrIdOrRole, 'CAN_RESTORE_DATABASE');
+  }
+
+  // 1. Verify candidate database integrity before restoration
+  const isVerified = await verifyDatabaseBinary(data);
+  if (!isVerified) {
+    return {
+      ok: false,
+      message: 'Restoration aborted: The provided backup file failed the SQLite integrity check or is corrupted.',
+    };
+  }
+
   if (!SQL) {
-    SQL = await initSqlJs({ locateFile: (file) => `/${file}` });
+    if (typeof window !== 'undefined') {
+      SQL = await initSqlJs({ locateFile: (file) => `/${file}` });
+    } else {
+      SQL = await initSqlJs();
+    }
   }
 
-  // 1. Safety check candidate database
-  let candidateDb: Database;
-  try {
-    candidateDb = new SQL.Database(data);
-    const check = candidateDb.exec('PRAGMA integrity_check;');
-    if (check[0]?.values[0]?.[0] !== 'ok') {
-      return { ok: false, message: 'Restoration aborted: The provided backup file is corrupted or not a valid SQLite database.' };
-    }
-    // Verify core tables exist
-    const tables = candidateDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('books', 'sales', 'users');");
-    if (!tables[0] || tables[0].values.length < 3) {
-      return { ok: false, message: 'Restoration aborted: Missing required KitabuPOS tables (books, sales, users).' };
-    }
-  } catch (err: any) {
-    return { ok: false, message: `Invalid database format: ${err.message}` };
+  const candidateDb = new SQL.Database(data);
+  const tables = candidateDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('books', 'sales', 'users');");
+  if (!tables[0] || tables[0].values.length < 3) {
+    candidateDb.close();
+    return { ok: false, message: 'Restoration aborted: Missing required KitabuPOS tables (books, sales, users).' };
   }
 
-  // 2. Pre-restore automatic backup of current DB
-  if (dbInstance) {
-    const preRestoreBackup = dbInstance.export();
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('kitabupos_pre_restore_safety_backup', uint8ArrayToBase64(preRestoreBackup));
+  // 2. Pre-restore automatic backup saved to IndexedDB (never localStorage)
+  if (dbInstance && typeof window !== 'undefined' && window.indexedDB) {
+    try {
+      const preRestoreBackup = dbInstance.export();
+      const idb = await openIDB();
+      await new Promise<void>((resolve, reject) => {
+        const tx = idb.transaction('sqlite', 'readwrite');
+        const store = tx.objectStore('sqlite');
+        const req = store.put(preRestoreBackup, 'pre_restore_safety_backup');
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    } catch (e) {
+      console.warn('Could not store pre_restore_safety_backup in IndexedDB:', e);
     }
   }
 
@@ -321,7 +390,8 @@ export async function restoreDatabaseBinary(data: Uint8Array, adminUserId: numbe
   await persistDbToStorage(dbInstance);
 
   // 4. Log audit record
-  await logAudit(adminUserId, adminName, 'DATABASE_RESTORE', 'system', '1', 'Restored database from external backup file.');
+  const aId = extractUserId(userOrIdOrRole, 1);
+  await logAudit(aId, adminName || 'Admin', 'DATABASE_RESTORE', 'system', '1', 'Restored database from external backup file.');
 
   return { ok: true, message: 'Database restored successfully! All records, inventory, and transactions loaded.' };
 }
@@ -363,11 +433,12 @@ export async function getDashboardMetrics(): Promise<{
   lowStockBooks: Array<{ id: number; title: string; category: string; quantity: number; reorder_level: number; purchase_price: number }>;
   lastBackupTime: string | null;
 }> {
-  const db = await getDatabase();
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Current date in Nairobi time (UTC+3)
+  const now = new Date();
+  const nairobiDate = new Date(now.getTime() + (3 * 60 + now.getTimezoneOffset()) * 60000);
+  const today = `${nairobiDate.getFullYear()}-${String(nairobiDate.getMonth() + 1).padStart(2, '0')}-${String(nairobiDate.getDate()).padStart(2, '0')}`;
 
-  // Today sales & payment split
+  // Today sales & payment split using Nairobi date filtering and excluding tax from revenue
   const todaySalesRes = await runQuery<{
     count: number;
     total: number;
@@ -377,13 +448,13 @@ export async function getDashboardMetrics(): Promise<{
   }>(
     `SELECT 
       COUNT(*) as count, 
-      COALESCE(SUM(grand_total), 0) as total,
-      COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN grand_total WHEN payment_method = 'split' THEN total_paid - change_amount ELSE 0 END), 0) as cashTotal,
+      COALESCE(SUM(grand_total - tax_total), 0) as total,
+      COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_paid - change_amount WHEN payment_method = 'split' THEN total_paid - change_amount ELSE 0 END), 0) as cashTotal,
       COALESCE(SUM(CASE WHEN payment_method = 'mpesa' THEN grand_total ELSE 0 END), 0) as mpesaTotal,
       COALESCE(SUM(CASE WHEN payment_method = 'card' THEN grand_total ELSE 0 END), 0) as cardTotal
      FROM sales 
-     WHERE is_voided = 0 AND created_at LIKE ?;`,
-    [`${today}%`]
+     WHERE is_voided = 0 AND date(created_at, '+3 hours') = ?;`,
+    [today]
   );
   const todaySalesCount = todaySalesRes[0]?.count || 0;
   const todayRevenue = todaySalesRes[0]?.total || 0;
@@ -391,13 +462,13 @@ export async function getDashboardMetrics(): Promise<{
   const todayMpesaRevenue = todaySalesRes[0]?.mpesaTotal || 0;
   const todayCardRevenue = todaySalesRes[0]?.cardTotal || 0;
 
-  // Today estimated COGS and profit
+  // Today estimated COGS and profit (excludes tax)
   const cogsRes = await runQuery<{ cogs: number }>(
     `SELECT COALESCE(SUM(si.quantity * si.unit_purchase_price), 0) as cogs
      FROM sale_items si
      JOIN sales s ON si.sale_id = s.id
-     WHERE s.is_voided = 0 AND s.created_at LIKE ?;`,
-    [`${today}%`]
+     WHERE s.is_voided = 0 AND date(s.created_at, '+3 hours') = ?;`,
+    [today]
   );
   const todayCogs = cogsRes[0]?.cogs || 0;
   const todayProfit = Math.round((todayRevenue - todayCogs) * 100) / 100;
@@ -420,7 +491,7 @@ export async function getDashboardMetrics(): Promise<{
      WHERE is_archived = 0;`
   );
 
-  // Low stock titles for actionable purchase order creation
+  // Low stock titles
   const lowStockBooks = await runQuery<{
     id: number;
     title: string;
@@ -436,7 +507,7 @@ export async function getDashboardMetrics(): Promise<{
      LIMIT 8;`
   );
 
-  // Recent 6 transactions
+  // Recent transactions
   const recentSales = await runQuery<Sale>(
     `SELECT id, receipt_number, cashier_name, customer_name, grand_total, payment_method, is_voided, created_at
      FROM sales
@@ -448,11 +519,11 @@ export async function getDashboardMetrics(): Promise<{
 
   return {
     todaySalesCount,
-    todayRevenue,
+    todayRevenue: Math.round(todayRevenue * 100) / 100,
     todayProfit,
-    todayCashRevenue,
-    todayMpesaRevenue,
-    todayCardRevenue,
+    todayCashRevenue: Math.round(todayCashRevenue * 100) / 100,
+    todayMpesaRevenue: Math.round(todayMpesaRevenue * 100) / 100,
+    todayCardRevenue: Math.round(todayCardRevenue * 100) / 100,
     totalInventoryCount: invRes[0]?.totalQty || 0,
     totalInventoryCostValue: Math.round((invRes[0]?.costVal || 0) * 100) / 100,
     totalInventoryRetailValue: Math.round((invRes[0]?.retailVal || 0) * 100) / 100,
@@ -489,21 +560,27 @@ export async function getBooks(options?: {
 
   if (options?.search && options.search.trim()) {
     const q = `%${options.search.trim()}%`;
-    sql += ' AND (title LIKE ? OR author LIKE ? OR isbn LIKE ? OR barcode LIKE ? OR publisher LIKE ?)';
+    sql += ' AND (title LIKE ? OR author LIKE ? OR isbn LIKE ? OR barcode LIKE ? OR category LIKE ?)';
     params.push(q, q, q, q, q);
   }
 
-  sql += ' ORDER BY title ASC';
+  sql += ' ORDER BY id DESC;';
   return runQuery<Book>(sql, params);
+}
+
+export async function getBookById(id: number): Promise<Book | null> {
+  return runQueryOne<Book>('SELECT * FROM books WHERE id = ?;', [id]);
 }
 
 export async function addBook(
   book: Omit<Book, 'id' | 'created_at' | 'updated_at' | 'is_archived'>,
-  userId: number,
-  userName: string
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
 ): Promise<number> {
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_INVENTORY');
+  const userId = extractUserId(userOrIdOrRole, 1);
   const now = new Date().toISOString();
-  // Check duplicate ISBN if provided
+
   if (book.isbn && book.isbn.trim()) {
     const existing = await runQueryOne('SELECT id, title FROM books WHERE isbn = ? AND is_archived = 0', [book.isbn.trim()]);
     if (existing) {
@@ -539,22 +616,23 @@ export async function addBook(
     );
   }
 
-  await logAudit(userId, userName, 'BOOK_CREATE', 'book', lastInsertId, `Added new book "${book.title}" (Qty: ${book.quantity}, Price: KES ${book.selling_price}).`);
+  await logAudit(userId, userName || 'User', 'BOOK_CREATE', 'book', lastInsertId, `Added new book "${book.title}" (Qty: ${book.quantity}, Price: KES ${book.selling_price}).`);
   return lastInsertId;
 }
 
 export async function updateBook(
   id: number,
   book: Partial<Book>,
-  userId: number,
-  userName: string
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
 ): Promise<void> {
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_INVENTORY');
+  const userId = extractUserId(userOrIdOrRole, 1);
   const current = await runQueryOne<Book>('SELECT * FROM books WHERE id = ?', [id]);
   if (!current) throw new Error('Book not found');
 
   const now = new Date().toISOString();
 
-  // Check duplicate ISBN if changed
   if (book.isbn && book.isbn.trim() && book.isbn !== current.isbn) {
     const existing = await runQueryOne('SELECT id, title FROM books WHERE isbn = ? AND id != ? AND is_archived = 0', [book.isbn.trim(), id]);
     if (existing) {
@@ -596,27 +674,46 @@ export async function updateBook(
   if (book.selling_price !== undefined && book.selling_price !== current.selling_price) {
     details += ` Price changed from KES ${current.selling_price} to KES ${book.selling_price}.`;
   }
-  await logAudit(userId, userName, 'BOOK_UPDATE', 'book', id, details);
+  await logAudit(userId, userName || 'User', 'BOOK_UPDATE', 'book', id, details);
 }
 
-export async function archiveBook(id: number, userId: number, userName: string): Promise<void> {
+export async function archiveBook(
+  id: number,
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
+): Promise<void> {
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_INVENTORY');
+  const userId = extractUserId(userOrIdOrRole, 1);
   const current = await runQueryOne<Book>('SELECT title FROM books WHERE id = ?', [id]);
   await runExecute('UPDATE books SET is_archived = 1 WHERE id = ?;', [id]);
-  await logAudit(userId, userName, 'BOOK_ARCHIVE', 'book', id, `Archived book "${current?.title}".`);
+  await logAudit(userId, userName || 'User', 'BOOK_ARCHIVE', 'book', id, `Archived book "${current?.title}".`);
 }
 
-export async function bulkArchiveBooks(ids: number[], userId: number, userName: string): Promise<void> {
+export async function bulkArchiveBooks(
+  ids: number[],
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
+): Promise<void> {
   if (ids.length === 0) return;
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_INVENTORY');
+  const userId = extractUserId(userOrIdOrRole, 1);
   const placeholders = ids.map(() => '?').join(',');
   await runExecute(`UPDATE books SET is_archived = 1 WHERE id IN (${placeholders});`, ids);
-  await logAudit(userId, userName, 'BOOK_BULK_ARCHIVE', 'book', ids.length, `Archived ${ids.length} book titles.`);
+  await logAudit(userId, userName || 'User', 'BOOK_BULK_ARCHIVE', 'book', ids.length, `Archived ${ids.length} book titles.`);
 }
 
-export async function bulkUpdateCategory(ids: number[], newCategory: string, userId: number, userName: string): Promise<void> {
+export async function bulkUpdateCategory(
+  ids: number[],
+  newCategory: string,
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
+): Promise<void> {
   if (ids.length === 0 || !newCategory.trim()) return;
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_INVENTORY');
+  const userId = extractUserId(userOrIdOrRole, 1);
   const placeholders = ids.map(() => '?').join(',');
   await runExecute(`UPDATE books SET category = ? WHERE id IN (${placeholders});`, [newCategory.trim(), ...ids]);
-  await logAudit(userId, userName, 'BOOK_BULK_CATEGORY', 'book', ids.length, `Updated category to "${newCategory.trim()}" for ${ids.length} books.`);
+  await logAudit(userId, userName || 'User', 'BOOK_BULK_CATEGORY', 'book', ids.length, `Updated category to "${newCategory.trim()}" for ${ids.length} books.`);
 }
 
 // Stock Adjustment
@@ -625,17 +722,19 @@ export async function adjustStock(
   quantityChange: number,
   movementType: 'purchase' | 'damage' | 'adjustment' | 'customer_return' | 'purchase_return',
   notes: string,
-  userId: number,
-  userName: string,
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string,
   unitCost?: number
 ): Promise<void> {
+  await requirePermission(userOrIdOrRole, 'CAN_ADJUST_STOCK');
+  const userId = extractUserId(userOrIdOrRole, 1);
+
   const db = await getDatabase();
   const now = new Date().toISOString();
 
-  // Run in immediate transaction
   db.run('BEGIN TRANSACTION;');
   try {
-    const bookRes = db.exec(`SELECT title, quantity, purchase_price FROM books WHERE id = ${bookId};`);
+    const bookRes = db.exec(`SELECT title, quantity, purchase_price FROM books WHERE id = ?;`, [bookId]);
     if (!bookRes[0] || bookRes[0].values.length === 0) {
       throw new Error('Book not found');
     }
@@ -648,10 +747,8 @@ export async function adjustStock(
       throw new Error(`Cannot adjust stock below zero. Current stock: ${prevQty}, Requested change: ${quantityChange}`);
     }
 
-    // Update book stock
     db.run(`UPDATE books SET quantity = ?, updated_at = ? WHERE id = ?;`, [newQty, now, bookId]);
 
-    // Record movement
     db.run(
       `INSERT INTO stock_movements (book_id, movement_type, quantity_change, previous_quantity, new_quantity, unit_cost, reference_type, notes, user_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'adjustment', ?, ?, ?);`,
@@ -663,11 +760,11 @@ export async function adjustStock(
 
     await logAudit(
       userId,
-      userName,
+      userName || 'User',
       'STOCK_ADJUSTMENT',
       'book',
       bookId,
-      `Adjusted stock for "${title}" (${quantityChange > 0 ? '+' : ''}${quantityChange}). Previous: ${prevQty}, New: ${newQty}. Reason: ${movementType} (${notes || 'No note'}).`
+      `Adjusted stock for "${title}" by ${quantityChange > 0 ? '+' : ''}${quantityChange} units (${movementType}). New stock: ${newQty}. Notes: ${notes}`
     );
   } catch (error) {
     db.run('ROLLBACK;');
@@ -679,7 +776,7 @@ export async function getStockMovements(bookId?: number): Promise<StockMovement[
   let sql = `
     SELECT sm.*, b.title as book_title, u.full_name as user_name
     FROM stock_movements sm
-    JOIN books b ON sm.book_id = b.id
+    LEFT JOIN books b ON sm.book_id = b.id
     LEFT JOIN users u ON sm.user_id = u.id
   `;
   const params: any[] = [];
@@ -716,39 +813,180 @@ export async function processSale(
     discountAmount: number;
     totalPrice: number;
   }>,
-  userId: number,
-  userName: string
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
 ): Promise<{ saleId: number; receiptNumber: string }> {
-  if (items.length === 0) {
+  await requirePermission(userOrIdOrRole, 'CAN_SELL');
+  const userId = extractUserId(userOrIdOrRole, 1);
+  let userRole: UserRole = 'admin';
+  if (typeof userOrIdOrRole === 'string') userRole = userOrIdOrRole as UserRole;
+  else if (typeof userOrIdOrRole === 'object' && userOrIdOrRole.role) userRole = userOrIdOrRole.role;
+  else if (typeof userOrIdOrRole === 'number') {
+    const u = await runQueryOne<{ role: UserRole }>('SELECT role FROM users WHERE id = ?;', [userOrIdOrRole]);
+    if (u) userRole = u.role;
+  }
+
+  if (!items || items.length === 0) {
     throw new Error('Sale must contain at least one item.');
   }
+
+  // Load shop settings for tax rate and max cashier discount limit
+  const settings = await getShopSettings();
+  const maxCashierDiscountPct = Number(settings.max_cashier_discount_percent ?? 10);
+  const taxRatePercent = Number(settings.tax_rate ?? 0);
 
   const db = await getDatabase();
   const now = new Date().toISOString();
   const year = new Date().getFullYear();
 
+  db.run('PRAGMA foreign_keys = ON;');
   db.run('BEGIN TRANSACTION;');
   try {
-    // 1. Verify stock availability for all items before any changes
+    const recomputeInputs: any[] = [];
+    const verifiedDbBooks: Array<{
+      id: number;
+      title: string;
+      isbn?: string;
+      quantity: number;
+      purchase_price: number;
+      selling_price: number;
+      requestedQty: number;
+      discountAmount: number;
+    }> = [];
+
+    // 1. Reload each book by id inside the transaction and validate with DB prices
     for (const item of items) {
-      const bookRes = db.exec(`SELECT title, quantity FROM books WHERE id = ${item.bookId};`);
-      if (!bookRes[0] || bookRes[0].values.length === 0) {
-        throw new Error(`Book "${item.bookTitle}" was not found in the database.`);
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        throw new Error(`Quantity for "${item.bookTitle}" must be an integer greater than 0.`);
       }
-      const availableQty = Number(bookRes[0].values[0][1]);
-      if (item.quantity > availableQty) {
-        throw new Error(`Insufficient stock for "${item.bookTitle}". Available: ${availableQty}, Requested: ${item.quantity}.`);
+
+      const bookRows = db.exec('SELECT id, title, isbn, quantity, purchase_price, selling_price FROM books WHERE id = ?;', [item.bookId]);
+      if (!bookRows[0] || bookRows[0].values.length === 0) {
+        throw new Error(`Book "${item.bookTitle}" was not found in catalog.`);
+      }
+      const bRow = bookRows[0].values[0];
+      const dbBook = {
+        id: Number(bRow[0]),
+        title: String(bRow[1]),
+        isbn: bRow[2] ? String(bRow[2]) : undefined,
+        quantity: Number(bRow[3]),
+        purchase_price: Number(bRow[4]),
+        selling_price: Number(bRow[5]),
+        requestedQty: item.quantity,
+        discountAmount: Number(item.discountAmount || 0),
+      };
+
+      if (dbBook.requestedQty > dbBook.quantity) {
+        throw new Error(`Insufficient stock for "${dbBook.title}". Available: ${dbBook.quantity}, Requested: ${dbBook.requestedQty}.`);
+      }
+
+      const rawLineTotal = Math.round(dbBook.requestedQty * dbBook.selling_price * 100) / 100;
+      if (dbBook.discountAmount < 0 || dbBook.discountAmount > rawLineTotal) {
+        throw new Error(`Discount on "${dbBook.title}" must be between 0 and line total (KES ${rawLineTotal}).`);
+      }
+
+      // Cashier discount limit verification
+      if (userRole === 'cashier' && rawLineTotal > 0) {
+        const discountPct = (dbBook.discountAmount / rawLineTotal) * 100;
+        if (discountPct > maxCashierDiscountPct + 0.001) {
+          throw new Error(`Cashier discount on "${dbBook.title}" (${discountPct.toFixed(1)}%) exceeds maximum allowed limit of ${maxCashierDiscountPct}%.`);
+        }
+      }
+
+      recomputeInputs.push({
+        book_id: dbBook.id,
+        quantity: dbBook.requestedQty,
+        unit_selling_price: dbBook.selling_price,
+        unit_purchase_price: dbBook.purchase_price,
+        discount_amount: dbBook.discountAmount,
+      });
+
+      verifiedDbBooks.push(dbBook);
+    }
+
+    // 2. Recompute line totals, discounts, tax and grand total with shared calculation module
+    const recomputed = calculateCartTotals(recomputeInputs, 0, taxRatePercent);
+
+    // Reject if client totals differ by more than 0.01
+    if (
+      Math.abs(sale.subtotal - recomputed.subtotal) > 0.01 ||
+      Math.abs(sale.grandTotal - recomputed.grandTotal) > 0.01 ||
+      Math.abs(sale.taxTotal - recomputed.taxTotal) > 0.01
+    ) {
+      throw new Error(
+        `Sale totals mismatch catalog pricing. Verified total: KES ${recomputed.grandTotal.toFixed(2)}, submitted: KES ${sale.grandTotal.toFixed(2)}.`
+      );
+    }
+
+    // 3. Validate payment
+    if (sale.totalPaid < recomputed.grandTotal - 0.001) {
+      throw new Error(`Total paid (KES ${sale.totalPaid.toFixed(2)}) must be greater than or equal to grand total (KES ${recomputed.grandTotal.toFixed(2)}). Underpayment rejected.`);
+    }
+
+    // Change is cash overpayment only
+    if (sale.paymentMethod === 'cash') {
+      const expectedChange = calculateChange(recomputed.grandTotal, sale.totalPaid);
+      if (Math.abs(sale.changeAmount - expectedChange) > 0.01) {
+        throw new Error(`Change calculation mismatch. Expected KES ${expectedChange.toFixed(2)}, got KES ${sale.changeAmount.toFixed(2)}.`);
+      }
+    } else if (sale.paymentMethod === 'mpesa' || sale.paymentMethod === 'card') {
+      if (sale.changeAmount > 0 || sale.totalPaid > recomputed.grandTotal + 0.001) {
+        throw new Error('Change is only permitted for cash payments.');
+      }
+    } else if (sale.paymentMethod === 'split') {
+      let splitPayments: any[] = [];
+      try {
+        splitPayments = JSON.parse(sale.paymentsJson || '[]');
+      } catch {}
+      let cashAmt = 0;
+      let nonCashAmt = 0;
+      for (const p of splitPayments) {
+        if (p.method === 'cash') cashAmt += Number(p.amount) || 0;
+        else nonCashAmt += Number(p.amount) || 0;
+      }
+      if (nonCashAmt > recomputed.grandTotal + 0.001) {
+        throw new Error('Non-cash portion in split payment cannot exceed grand total.');
+      }
+      if (sale.changeAmount > 0 && cashAmt <= Math.max(0, recomputed.grandTotal - nonCashAmt)) {
+        throw new Error('Change is only permitted for cash overpayment.');
       }
     }
 
-    // 2. Generate sequential receipt number with configured prefix
+    // 4. Validate M-Pesa codes
+    const mpesaCodes: string[] = [];
+    if (sale.paymentMethod === 'mpesa' && sale.paymentReference) {
+      mpesaCodes.push(sale.paymentReference.trim());
+    }
+    if (sale.paymentsJson) {
+      try {
+        const parsed = JSON.parse(sale.paymentsJson);
+        if (Array.isArray(parsed)) {
+          for (const p of parsed) {
+            if (p.method === 'mpesa' && p.reference) {
+              mpesaCodes.push(p.reference.trim());
+            }
+          }
+        }
+      } catch {}
+    }
+
+    for (const code of mpesaCodes) {
+      if (!/^[A-Z0-9]{10}$/.test(code)) {
+        throw new Error(`Invalid M-Pesa transaction code "${code}". Must be exactly 10 uppercase alphanumeric characters.`);
+      }
+      const dupRes = db.exec('SELECT id FROM sales WHERE payment_reference = ? AND is_voided = 0;', [code]);
+      if (dupRes.length > 0 && dupRes[0].values.length > 0) {
+        throw new Error(`Duplicate M-Pesa transaction code "${code}". Already used on sale #${dupRes[0].values[0][0]}.`);
+      }
+    }
+
+    // 5. Generate sequential receipt number
     const maxIdRes = db.exec('SELECT COALESCE(MAX(id), 0) + 1 FROM sales;');
     const nextSaleId = Number(maxIdRes[0]?.values[0]?.[0] || 1);
-    const prefixRes = db.exec("SELECT value FROM shop_settings WHERE key = 'receipt_prefix';");
-    const prefix = (prefixRes[0]?.values[0]?.[0] as string)?.trim() || 'RCP';
+    const prefix = settings.receipt_prefix?.trim() || 'RCP';
     const receiptNumber = `${prefix}-${year}-${String(nextSaleId).padStart(5, '0')}`;
 
-    // 3. Insert sale header
+    // 6. Insert sale header with parameterized queries only
     db.run(
       `INSERT INTO sales (
         id, receipt_number, user_id, cashier_name, customer_name,
@@ -761,21 +999,22 @@ export async function processSale(
         userId,
         sale.cashierName,
         sale.customerName?.trim() || 'Walk-in Customer',
-        sale.subtotal,
-        sale.discountTotal,
-        sale.taxTotal,
-        sale.grandTotal,
+        recomputed.subtotal,
+        recomputed.totalDiscount,
+        recomputed.taxTotal,
+        recomputed.grandTotal,
         sale.totalPaid,
         sale.changeAmount,
         sale.paymentMethod,
-        sale.paymentReference || null,
+        sale.paymentReference?.trim() || null,
         sale.paymentsJson || null,
         now,
       ]
     );
 
-    // 4. Insert items, deduct inventory, and record stock movement
-    for (const item of items) {
+    // 7. Insert items, deduct inventory, and record stock movements
+    for (const dbBook of verifiedDbBooks) {
+      const lineTotal = Math.round((dbBook.requestedQty * dbBook.selling_price - dbBook.discountAmount) * 100) / 100;
       db.run(
         `INSERT INTO sale_items (
           sale_id, book_id, book_title, isbn, quantity,
@@ -783,37 +1022,31 @@ export async function processSale(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
         [
           nextSaleId,
-          item.bookId,
-          item.bookTitle,
-          item.isbn || null,
-          item.quantity,
-          item.unitPurchasePrice,
-          item.unitSellingPrice,
-          item.discountAmount,
-          item.totalPrice,
+          dbBook.id,
+          dbBook.title,
+          dbBook.isbn || null,
+          dbBook.requestedQty,
+          dbBook.purchase_price,
+          dbBook.selling_price,
+          dbBook.discountAmount,
+          lineTotal,
         ]
       );
 
-      // Get current stock
-      const bookRes = db.exec(`SELECT quantity FROM books WHERE id = ${item.bookId};`);
-      const prevQty = Number(bookRes[0].values[0][0]);
-      const newQty = prevQty - item.quantity;
+      const newQty = dbBook.quantity - dbBook.requestedQty;
+      db.run('UPDATE books SET quantity = ?, updated_at = ? WHERE id = ?;', [newQty, now, dbBook.id]);
 
-      // Deduct stock
-      db.run(`UPDATE books SET quantity = ?, updated_at = ? WHERE id = ?;`, [newQty, now, item.bookId]);
-
-      // Record movement
       db.run(
         `INSERT INTO stock_movements (
           book_id, movement_type, quantity_change, previous_quantity, new_quantity,
           unit_cost, reference_type, reference_id, notes, user_id, created_at
         ) VALUES (?, 'sale', ?, ?, ?, ?, 'sale', ?, ?, ?, ?);`,
         [
-          item.bookId,
-          -item.quantity,
-          prevQty,
+          dbBook.id,
+          -dbBook.requestedQty,
+          dbBook.quantity,
           newQty,
-          item.unitPurchasePrice,
+          dbBook.purchase_price,
           receiptNumber,
           `Sale #${receiptNumber}`,
           userId,
@@ -823,16 +1056,9 @@ export async function processSale(
     }
 
     db.run('COMMIT;');
-    await persistDbToStorage(db);
 
-    await logAudit(
-      userId,
-      userName,
-      'SALE_COMPLETE',
-      'sale',
-      nextSaleId,
-      `Completed sale #${receiptNumber} for KES ${sale.grandTotal.toFixed(2)} (${sale.paymentMethod.toUpperCase()}${sale.paymentReference ? ': ' + sale.paymentReference : ''}). Items: ${items.length}.`
-    );
+    // Flush persistence immediately after each completed sale before the receipt shows
+    await persistDbToStorage(db);
 
     return { saleId: nextSaleId, receiptNumber };
   } catch (error) {
@@ -841,19 +1067,23 @@ export async function processSale(
   }
 }
 
-// Void Sale (Restores inventory and records audit)
+// Void Sale
 export async function voidSale(
   saleId: number,
   reason: string,
-  userId: number,
-  userName: string
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
 ): Promise<void> {
+  await requirePermission(userOrIdOrRole, 'CAN_VOID_SALE');
+  const userId = extractUserId(userOrIdOrRole, 1);
+
   const db = await getDatabase();
   const now = new Date().toISOString();
 
+  db.run('PRAGMA foreign_keys = ON;');
   db.run('BEGIN TRANSACTION;');
   try {
-    const saleRes = db.exec(`SELECT receipt_number, is_voided, grand_total FROM sales WHERE id = ${saleId};`);
+    const saleRes = db.exec('SELECT receipt_number, is_voided, grand_total FROM sales WHERE id = ?;', [saleId]);
     if (!saleRes[0] || saleRes[0].values.length === 0) {
       throw new Error('Sale not found');
     }
@@ -865,22 +1095,19 @@ export async function voidSale(
       throw new Error(`Sale #${receiptNumber} is already voided.`);
     }
 
-    // Get sale items to reverse stock
-    const itemsRes = db.exec(`SELECT book_id, quantity, unit_purchase_price FROM sale_items WHERE sale_id = ${saleId};`);
+    const itemsRes = db.exec('SELECT book_id, quantity, unit_purchase_price FROM sale_items WHERE sale_id = ?;', [saleId]);
     if (itemsRes[0]) {
       for (const row of itemsRes[0].values) {
         const bookId = Number(row[0]);
         const quantity = Number(row[1]);
         const unitCost = Number(row[2]);
 
-        const bookQtyRes = db.exec(`SELECT quantity FROM books WHERE id = ${bookId};`);
+        const bookQtyRes = db.exec('SELECT quantity FROM books WHERE id = ?;', [bookId]);
         const prevQty = Number(bookQtyRes[0]?.values[0]?.[0] || 0);
         const newQty = prevQty + quantity;
 
-        // Restore stock
-        db.run(`UPDATE books SET quantity = ?, updated_at = ? WHERE id = ?;`, [newQty, now, bookId]);
+        db.run('UPDATE books SET quantity = ?, updated_at = ? WHERE id = ?;', [newQty, now, bookId]);
 
-        // Record stock movement
         db.run(
           `INSERT INTO stock_movements (
             book_id, movement_type, quantity_change, previous_quantity, new_quantity,
@@ -901,9 +1128,8 @@ export async function voidSale(
       }
     }
 
-    // Mark sale voided
     db.run(
-      `UPDATE sales SET is_voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ? WHERE id = ?;`,
+      'UPDATE sales SET is_voided = 1, void_reason = ?, voided_by_user_id = ?, voided_at = ? WHERE id = ?;',
       [reason, userId, now, saleId]
     );
 
@@ -912,7 +1138,7 @@ export async function voidSale(
 
     await logAudit(
       userId,
-      userName,
+      userName || 'User',
       'SALE_VOID',
       'sale',
       saleId,
@@ -936,11 +1162,11 @@ export async function getSales(options?: {
   const params: any[] = [];
 
   if (options?.startDate) {
-    sql += ' AND substr(created_at, 1, 10) >= ?';
+    sql += " AND date(created_at, '+3 hours') >= ?";
     params.push(options.startDate);
   }
   if (options?.endDate) {
-    sql += ' AND substr(created_at, 1, 10) <= ?';
+    sql += " AND date(created_at, '+3 hours') <= ?";
     params.push(options.endDate);
   }
   if (options?.customerId) {
@@ -965,12 +1191,9 @@ export async function getSales(options?: {
   }
 
   const sales = await runQuery<Sale>(sql, params);
-
-  // Fetch items for recent sales
   for (const s of sales) {
     s.items = await runQuery<SaleItem>('SELECT * FROM sale_items WHERE sale_id = ?', [s.id]);
   }
-
   return sales;
 }
 
@@ -998,9 +1221,11 @@ export async function getSuppliers(): Promise<Supplier[]> {
 
 export async function addSupplier(
   supplier: Omit<Supplier, 'id' | 'created_at' | 'balance'>,
-  userId: number,
-  userName: string
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
 ): Promise<number> {
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_PURCHASES');
+  const userId = extractUserId(userOrIdOrRole, 1);
   const now = new Date().toISOString();
   const { lastInsertId } = await runExecute(
     `INSERT INTO suppliers (name, contact_person, phone, email, address, balance, created_at)
@@ -1014,7 +1239,7 @@ export async function addSupplier(
       now,
     ]
   );
-  await logAudit(userId, userName, 'SUPPLIER_CREATE', 'supplier', lastInsertId, `Registered supplier "${supplier.name}".`);
+  await logAudit(userId, userName || 'User', 'SUPPLIER_CREATE', 'supplier', lastInsertId, `Registered supplier "${supplier.name}".`);
   return lastInsertId;
 }
 
@@ -1035,15 +1260,19 @@ export async function recordPurchase(
     unitCost: number;
     totalCost: number;
   }>,
-  userId: number,
-  userName: string
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
 ): Promise<number> {
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_PURCHASES');
+  const userId = extractUserId(userOrIdOrRole, 1);
+
   const db = await getDatabase();
   const now = new Date().toISOString();
 
+  db.run('PRAGMA foreign_keys = ON;');
   db.run('BEGIN TRANSACTION;');
   try {
-    const { lastInsertId } = await runExecute(
+    const insertRes = db.exec(
       `INSERT INTO purchases (supplier_id, invoice_number, total_cost, amount_paid, payment_status, status, notes, user_id, created_at, received_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
@@ -1060,7 +1289,9 @@ export async function recordPurchase(
       ]
     );
 
-    // If purchase is received immediately, update stock
+    const lastIdRes = db.exec('SELECT last_insert_rowid();');
+    const lastInsertId = Number(lastIdRes[0]?.values[0]?.[0] || 0);
+
     for (const item of items) {
       db.run(
         `INSERT INTO purchase_items (purchase_id, book_id, book_title, quantity, unit_cost, total_cost)
@@ -1069,17 +1300,17 @@ export async function recordPurchase(
       );
 
       if (purchase.status === 'received') {
-        const bookRes = db.exec(`SELECT quantity FROM books WHERE id = ${item.bookId};`);
+        const bookRes = db.exec('SELECT quantity FROM books WHERE id = ?;', [item.bookId]);
         const prevQty = Number(bookRes[0]?.values[0]?.[0] || 0);
         const newQty = prevQty + item.quantity;
 
-        // Update book stock and new cost price
-        db.run(
-          `UPDATE books SET quantity = ?, purchase_price = ?, updated_at = ? WHERE id = ?;`,
-          [newQty, item.unitCost, now, item.bookId]
-        );
+        db.run('UPDATE books SET quantity = ?, purchase_price = ?, updated_at = ? WHERE id = ?;', [
+          newQty,
+          item.unitCost,
+          now,
+          item.bookId,
+        ]);
 
-        // Record stock movement
         db.run(
           `INSERT INTO stock_movements (book_id, movement_type, quantity_change, previous_quantity, new_quantity, unit_cost, reference_type, reference_id, notes, user_id, created_at)
            VALUES (?, 'purchase', ?, ?, ?, ?, 'purchase', ?, ?, ?, ?);`,
@@ -1098,24 +1329,17 @@ export async function recordPurchase(
       }
     }
 
-    // Update supplier balance if unpaid / partial
-    const unpaidBalance = Math.max(0, purchase.totalCost - purchase.amountPaid);
-    if (unpaidBalance > 0) {
-      db.run(`UPDATE suppliers SET balance = balance + ? WHERE id = ?;`, [unpaidBalance, purchase.supplierId]);
-    }
-
     db.run('COMMIT;');
     await persistDbToStorage(db);
 
     await logAudit(
       userId,
-      userName,
-      'PURCHASE_RECEIVE',
+      userName || 'User',
+      'PURCHASE_RECORD',
       'purchase',
       lastInsertId,
-      `Recorded purchase invoice #${purchase.invoiceNumber} (KES ${purchase.totalCost.toFixed(2)}, Paid: KES ${purchase.amountPaid.toFixed(2)}).`
+      `Recorded purchase invoice #${purchase.invoiceNumber} (KES ${purchase.totalCost.toFixed(2)}) from supplier #${purchase.supplierId}.`
     );
-
     return lastInsertId;
   } catch (error) {
     db.run('ROLLBACK;');
@@ -1123,112 +1347,99 @@ export async function recordPurchase(
   }
 }
 
-export async function getPurchases(): Promise<any[]> {
-  const purchases = await runQuery(
-    `SELECT p.*, s.name as supplier_name, u.full_name as user_name
-     FROM purchases p
-     JOIN suppliers s ON p.supplier_id = s.id
-     LEFT JOIN users u ON p.user_id = u.id
-     ORDER BY p.id DESC LIMIT 100;`
+export async function updatePurchaseStatus(
+  purchaseId: number,
+  status: 'received' | 'pending' | 'cancelled',
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
+): Promise<void> {
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_PURCHASES');
+  const userId = extractUserId(userOrIdOrRole, 1);
+  const now = new Date().toISOString();
+
+  await runExecute(
+    `UPDATE purchases SET status = ?, received_at = (CASE WHEN ? = 'received' THEN ? ELSE received_at END) WHERE id = ?;`,
+    [status, status, now, purchaseId]
   );
-  for (const p of purchases) {
-    p.items = await runQuery('SELECT * FROM purchase_items WHERE purchase_id = ?', [p.id]);
-  }
-  return purchases;
+  await logAudit(userId, userName || 'User', 'PURCHASE_STATUS_UPDATE', 'purchase', purchaseId, `Updated purchase #${purchaseId} status to "${status}".`);
 }
 
 export async function receivePendingPurchase(
   purchaseId: number,
-  userId: number,
-  userName: string
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
 ): Promise<void> {
-  const db = await getDatabase();
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_PURCHASES');
+  const userId = extractUserId(userOrIdOrRole, 1);
   const now = new Date().toISOString();
+  const db = await getDatabase();
 
+  db.run('PRAGMA foreign_keys = ON;');
   db.run('BEGIN TRANSACTION;');
   try {
-    const pRes = db.exec(`SELECT status, invoice_number FROM purchases WHERE id = ${purchaseId};`);
-    if (!pRes[0] || pRes[0].values.length === 0) throw new Error('Purchase order not found');
-    if (pRes[0].values[0][0] === 'received') throw new Error('Purchase order is already received');
-    const invoiceNumber = pRes[0].values[0][1] as string;
+    const pRes = db.exec('SELECT invoice_number, status FROM purchases WHERE id = ?;', [purchaseId]);
+    if (!pRes[0] || pRes[0].values.length === 0) throw new Error('Purchase not found');
+    const invoiceNumber = pRes[0].values[0][0] as string;
+    const status = pRes[0].values[0][1] as string;
+    if (status === 'received') throw new Error('Purchase is already received.');
 
-    const itemsRes = db.exec(`SELECT book_id, quantity, unit_cost FROM purchase_items WHERE purchase_id = ${purchaseId};`);
-    if (itemsRes[0]) {
-      for (const row of itemsRes[0].values) {
-        const bookId = Number(row[0]);
-        const quantity = Number(row[1]);
-        const unitCost = Number(row[2]);
+    db.run("UPDATE purchases SET status = 'received', received_at = ? WHERE id = ?;", [now, purchaseId]);
 
-        const bookRes = db.exec(`SELECT quantity FROM books WHERE id = ${bookId};`);
-        const prevQty = Number(bookRes[0]?.values[0]?.[0] || 0);
-        const newQty = prevQty + quantity;
+    const items = await runQuery<{ book_id: number; quantity: number; unit_cost: number }>(
+      'SELECT book_id, quantity, unit_cost FROM purchase_items WHERE purchase_id = ?;',
+      [purchaseId]
+    );
 
-        db.run(`UPDATE books SET quantity = ?, purchase_price = ?, updated_at = ? WHERE id = ?;`, [newQty, unitCost, now, bookId]);
-        db.run(
-          `INSERT INTO stock_movements (book_id, movement_type, quantity_change, previous_quantity, new_quantity, unit_cost, reference_type, reference_id, notes, user_id, created_at)
-           VALUES (?, 'purchase', ?, ?, ?, ?, 'purchase', ?, ?, ?, ?);`,
-          [bookId, quantity, prevQty, newQty, unitCost, String(purchaseId), `Goods Received (Inv: ${invoiceNumber})`, userId, now]
-        );
-      }
+    for (const item of items) {
+      const bRes = db.exec('SELECT quantity FROM books WHERE id = ?;', [item.book_id]);
+      const prevQty = Number(bRes[0]?.values[0]?.[0] || 0);
+      const newQty = prevQty + item.quantity;
+      db.run('UPDATE books SET quantity = ?, purchase_price = ?, updated_at = ? WHERE id = ?;', [newQty, item.unit_cost, now, item.book_id]);
+      db.run(
+        `INSERT INTO stock_movements (book_id, movement_type, quantity_change, previous_quantity, new_quantity, unit_cost, reference_type, reference_id, notes, user_id, created_at)
+         VALUES (?, 'purchase', ?, ?, ?, ?, 'purchase', ?, ?, ?, ?);`,
+        [item.book_id, item.quantity, prevQty, newQty, item.unit_cost, String(purchaseId), `Received delivery for Inv #${invoiceNumber}`, userId, now]
+      );
     }
 
-    db.run(`UPDATE purchases SET status = 'received', received_at = ? WHERE id = ?;`, [now, purchaseId]);
     db.run('COMMIT;');
     await persistDbToStorage(db);
-
-    await logAudit(userId, userName, 'PURCHASE_RECEIVE', 'purchase', purchaseId, `Received pending purchase order #${invoiceNumber} into inventory.`);
-  } catch (error) {
+    await logAudit(userId, userName || 'User', 'PURCHASE_RECEIVE', 'purchase', purchaseId, `Received stock delivery for purchase invoice #${invoiceNumber}.`);
+  } catch (err) {
     db.run('ROLLBACK;');
-    throw error;
+    throw err;
   }
 }
 
 export async function recordSupplierPayment(
-  purchaseId: number,
-  paymentAmount: number,
-  userId: number,
-  userName: string
+  supplierId: number,
+  amount: number,
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
 ): Promise<void> {
-  const db = await getDatabase();
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_PURCHASES');
+  const userId = extractUserId(userOrIdOrRole, 1);
+  await runExecute('UPDATE suppliers SET balance = balance - ? WHERE id = ?;', [amount, supplierId]);
+  await logAudit(userId, userName || 'User', 'SUPPLIER_PAYMENT', 'supplier', supplierId, `Recorded supplier payment of KES ${amount.toFixed(2)}.`);
+}
 
-  db.run('BEGIN TRANSACTION;');
-  try {
-    const pRes = db.exec(`SELECT supplier_id, total_cost, amount_paid, invoice_number FROM purchases WHERE id = ${purchaseId};`);
-    if (!pRes[0] || pRes[0].values.length === 0) throw new Error('Purchase order not found');
-    const supplierId = Number(pRes[0].values[0][0]);
-    const totalCost = Number(pRes[0].values[0][1]);
-    const currentPaid = Number(pRes[0].values[0][2]);
-    const invoiceNumber = pRes[0].values[0][3] as string;
-
-    const newPaid = Math.min(totalCost, currentPaid + paymentAmount);
-    const newStatus = newPaid >= totalCost ? 'paid' : 'partial';
-
-    db.run(`UPDATE purchases SET amount_paid = ?, payment_status = ? WHERE id = ?;`, [newPaid, newStatus, purchaseId]);
-    db.run(`UPDATE suppliers SET balance = MAX(0, balance - ?) WHERE id = ?;`, [paymentAmount, supplierId]);
-
-    db.run('COMMIT;');
-    await persistDbToStorage(db);
-
-    await logAudit(
-      userId,
-      userName,
-      'SUPPLIER_PAYMENT',
-      'purchase',
-      purchaseId,
-      `Recorded supplier payment of KES ${paymentAmount.toFixed(2)} for invoice #${invoiceNumber}. Status: ${newStatus}.`
-    );
-  } catch (error) {
-    db.run('ROLLBACK;');
-    throw error;
+export async function getPurchases(): Promise<any[]> {
+  const sql = `
+    SELECT p.*, s.name as supplier_name, u.full_name as user_name
+    FROM purchases p
+    LEFT JOIN suppliers s ON p.supplier_id = s.id
+    LEFT JOIN users u ON p.user_id = u.id
+    ORDER BY p.id DESC;
+  `;
+  const purchases = await runQuery(sql);
+  for (const p of purchases) {
+    p.items = await runQuery('SELECT * FROM purchase_items WHERE purchase_id = ?;', [p.id]);
   }
+  return purchases;
 }
 
 // Expenses
-export async function getExpenses(options?: {
-  startDate?: string;
-  endDate?: string;
-  category?: string;
-}): Promise<Expense[]> {
+export async function getExpenses(options?: { startDate?: string; endDate?: string; category?: string }): Promise<Expense[]> {
   let sql = `
     SELECT e.*, u.full_name as user_name
     FROM expenses e
@@ -1252,20 +1463,30 @@ export async function getExpenses(options?: {
   return runQuery<Expense>(sql, params);
 }
 
-export async function addExpense(
-  expense: Omit<Expense, 'id' | 'created_at'>,
-  userId: number,
-  userName: string
+export async function recordExpense(
+  expense: {
+    category: ExpenseCategory;
+    amount: number;
+    description: string;
+    date: string;
+    user_id?: number;
+  },
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
 ): Promise<number> {
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_EXPENSES');
+  const userId = extractUserId(userOrIdOrRole, 1);
   const now = new Date().toISOString();
   const { lastInsertId } = await runExecute(
     `INSERT INTO expenses (category, amount, description, date, user_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?);`,
     [expense.category, expense.amount, expense.description.trim(), expense.date, userId, now]
   );
-  await logAudit(userId, userName, 'EXPENSE_RECORD', 'expense', lastInsertId, `Recorded expense of KES ${expense.amount.toFixed(2)} under "${expense.category}": ${expense.description}.`);
+  await logAudit(userId, userName || 'User', 'EXPENSE_RECORD', 'expense', lastInsertId, `Recorded expense of KES ${expense.amount.toFixed(2)} under "${expense.category}": ${expense.description}.`);
   return lastInsertId;
 }
+
+export const addExpense = recordExpense;
 
 // Reports & Analytics
 export async function getFinancialSummary(startDate: string, endDate: string): Promise<{
@@ -1279,16 +1500,21 @@ export async function getFinancialSummary(startDate: string, endDate: string): P
   voidedCount: number;
   paymentBreakdown: { [method: string]: number };
 }> {
-  // Sales revenue & COGS
+  // Sales filtered by Nairobi date (+3 hours)
   const sales = await runQuery<{
+    subtotal: number;
+    discount_total: number;
+    tax_total: number;
     grand_total: number;
     total_paid: number;
+    change_amount: number;
     is_voided: number;
     payment_method: string;
+    payments_json?: string;
   }>(
-    `SELECT grand_total, total_paid, is_voided, payment_method
+    `SELECT subtotal, discount_total, tax_total, grand_total, total_paid, change_amount, is_voided, payment_method, payments_json
      FROM sales
-     WHERE substr(created_at, 1, 10) >= ? AND substr(created_at, 1, 10) <= ?;`,
+     WHERE date(created_at, '+3 hours') >= ? AND date(created_at, '+3 hours') <= ?;`,
     [startDate, endDate]
   );
 
@@ -1309,24 +1535,62 @@ export async function getFinancialSummary(startDate: string, endDate: string): P
       continue;
     }
     totalTransactions++;
-    revenue += s.grand_total;
-    cashReceived += s.total_paid;
-    const method = s.payment_method || 'cash';
-    paymentBreakdown[method] = (paymentBreakdown[method] || 0) + s.grand_total;
+
+    // Revenue excludes VAT / tax
+    const netSaleRevenue = Math.round((s.subtotal - s.discount_total) * 100) / 100;
+    revenue += netSaleRevenue;
+
+    // Cash received must not include change given
+    if (s.payment_method === 'cash') {
+      const netCash = s.total_paid - s.change_amount;
+      cashReceived += netCash;
+      paymentBreakdown.cash += s.grand_total;
+    } else if (s.payment_method === 'mpesa') {
+      paymentBreakdown.mpesa += s.grand_total;
+    } else if (s.payment_method === 'card') {
+      paymentBreakdown.card += s.grand_total;
+    } else if (s.payment_method === 'split') {
+      let parsed = false;
+      if (s.payments_json) {
+        try {
+          const split = JSON.parse(s.payments_json);
+          if (Array.isArray(split)) {
+            for (const p of split) {
+              const amt = Number(p.amount) || 0;
+              if (p.method === 'cash') {
+                cashReceived += (amt - s.change_amount);
+                paymentBreakdown.cash += amt;
+              } else if (p.method === 'mpesa') {
+                paymentBreakdown.mpesa += amt;
+              } else if (p.method === 'card') {
+                paymentBreakdown.card += amt;
+              }
+            }
+            parsed = true;
+          }
+        } catch {}
+      }
+      if (!parsed) {
+        cashReceived += (s.total_paid - s.change_amount);
+        paymentBreakdown.split = (paymentBreakdown.split || 0) + s.grand_total;
+      }
+    }
   }
 
-  // COGS for non-voided sales
+  // COGS for non-voided sales using Nairobi date filtering
   const cogsRes = await runQuery<{ cogs: number }>(
     `SELECT COALESCE(SUM(si.quantity * si.unit_purchase_price), 0) as cogs
      FROM sale_items si
      JOIN sales s ON si.sale_id = s.id
-     WHERE s.is_voided = 0 AND substr(s.created_at, 1, 10) >= ? AND substr(s.created_at, 1, 10) <= ?;`,
+     WHERE s.is_voided = 0 AND date(s.created_at, '+3 hours') >= ? AND date(s.created_at, '+3 hours') <= ?;`,
     [startDate, endDate]
   );
   const cogs = cogsRes[0]?.cogs || 0;
+
+  // Gross profit excludes tax (revenue is already net of VAT)
   const grossProfit = Math.round((revenue - cogs) * 100) / 100;
 
-  // Expenses in date range
+  // Operating Expenses
   const expRes = await runQuery<{ total: number }>(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM expenses
@@ -1345,7 +1609,12 @@ export async function getFinancialSummary(startDate: string, endDate: string): P
     netOperatingProfit,
     totalTransactions,
     voidedCount,
-    paymentBreakdown,
+    paymentBreakdown: {
+      cash: Math.round(paymentBreakdown.cash * 100) / 100,
+      mpesa: Math.round(paymentBreakdown.mpesa * 100) / 100,
+      card: Math.round(paymentBreakdown.card * 100) / 100,
+      split: Math.round((paymentBreakdown.split || 0) * 100) / 100,
+    },
   };
 }
 
@@ -1353,7 +1622,7 @@ export async function getTopSellingBooks(limit = 10, startDate?: string, endDate
   let dateFilter = '';
   const params: any[] = [];
   if (startDate && endDate) {
-    dateFilter = ' AND substr(s.created_at, 1, 10) >= ? AND substr(s.created_at, 1, 10) <= ?';
+    dateFilter = " AND date(s.created_at, '+3 hours') >= ? AND date(s.created_at, '+3 hours') <= ?";
     params.push(startDate, endDate);
   }
 
@@ -1400,7 +1669,7 @@ export async function getCashUpReport(date: string, cashierId?: number): Promise
   }
 
   const sales = await runQuery<Sale>(
-    `SELECT * FROM sales WHERE substr(created_at, 1, 10) = ? ${userClause};`,
+    `SELECT * FROM sales WHERE date(created_at, '+3 hours') = ? ${userClause};`,
     params
   );
 
@@ -1419,7 +1688,9 @@ export async function getCashUpReport(date: string, cashierId?: number): Promise
       continue;
     }
     totalTransactions++;
-    grossSales += s.grand_total;
+    // Exclude tax from gross revenue
+    grossSales += (s.subtotal - s.discount_total);
+
     if (s.payment_method === 'cash') {
       cashSales += s.grand_total;
     } else if (s.payment_method === 'mpesa') {
@@ -1427,15 +1698,30 @@ export async function getCashUpReport(date: string, cashierId?: number): Promise
     } else if (s.payment_method === 'card') {
       cardSales += s.grand_total;
     } else if (s.payment_method === 'split') {
-      try {
-        const split = s.payment_reference ? JSON.parse(s.payment_reference) : null;
-        if (split) {
+      let handled = false;
+      if (s.payments_json) {
+        try {
+          const split = JSON.parse(s.payments_json);
+          if (Array.isArray(split)) {
+            for (const p of split) {
+              const amt = Number(p.amount) || 0;
+              if (p.method === 'cash') cashSales += amt;
+              else if (p.method === 'mpesa') mpesaSales += amt;
+              else if (p.method === 'card') cardSales += amt;
+            }
+            handled = true;
+          }
+        } catch {}
+      }
+      if (!handled && s.payment_reference) {
+        try {
+          const split = JSON.parse(s.payment_reference);
           cashSales += Number(split.cash) || 0;
           mpesaSales += Number(split.mpesa) || 0;
-        } else {
-          cashSales += s.grand_total;
-        }
-      } catch {
+          handled = true;
+        } catch {}
+      }
+      if (!handled) {
         cashSales += s.grand_total;
       }
     }
@@ -1476,52 +1762,108 @@ export async function getCashUpReport(date: string, cashierId?: number): Promise
 
 // Users
 export async function getUsers(): Promise<User[]> {
-  return runQuery<User>('SELECT id, username, full_name, role, pin, is_active, created_at, last_login FROM users ORDER BY id ASC;');
+  // Never SELECT password_hash or pin into anything reaching the UI
+  return runQuery<User>(
+    `SELECT id, username, full_name, role, is_active, created_at, last_login,
+      (CASE WHEN pin IS NOT NULL AND pin != '' THEN 1 ELSE 0 END) as has_pin
+     FROM users ORDER BY id ASC;`
+  );
 }
 
-export async function addUser(user: Omit<User, 'id' | 'created_at'>, adminUserId: number, adminName: string): Promise<number> {
+export async function addUser(
+  user: Omit<User, 'id' | 'created_at'>,
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  adminName?: string
+): Promise<number> {
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_USERS');
+  const adminId = extractUserId(userOrIdOrRole, 1);
   const now = new Date().toISOString();
-  const existing = await runQueryOne('SELECT id FROM users WHERE username = ?', [user.username.trim()]);
+  const trimmed = user.username.trim();
+
+  // Case-insensitive unique check
+  const existing = await runQueryOne('SELECT id FROM users WHERE LOWER(username) = LOWER(?);', [trimmed]);
   if (existing) {
     throw new Error(`Username "${user.username}" is already taken.`);
+  }
+
+  let passHash = user.password_hash || '';
+  if (!passHash.startsWith('$2')) {
+    passHash = bcrypt.hashSync(passHash, 10);
+  }
+
+  let pinHash: string | null = null;
+  if (user.pin && user.pin.trim()) {
+    pinHash = user.pin.startsWith('$2') ? user.pin : bcrypt.hashSync(user.pin.trim(), 10);
   }
 
   const { lastInsertId } = await runExecute(
     `INSERT INTO users (username, full_name, role, password_hash, pin, is_active, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?);`,
-    [user.username.trim(), user.full_name.trim(), user.role, user.password_hash, user.pin || null, user.is_active, now]
+    [trimmed, user.full_name.trim(), user.role, passHash, pinHash, user.is_active, now]
   );
-  await logAudit(adminUserId, adminName, 'USER_CREATE', 'user', lastInsertId, `Created user "${user.username}" with role "${user.role}".`);
+  await logAudit(adminId, adminName || 'Admin', 'USER_CREATE', 'user', lastInsertId, `Created user "${trimmed}" with role "${user.role}".`);
   return lastInsertId;
 }
 
 export async function updateUser(
   id: number,
   userData: Partial<User>,
-  adminUserId: number,
-  adminName: string
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  adminName?: string
 ): Promise<void> {
-  const current = await runQueryOne<User>('SELECT * FROM users WHERE id = ?', [id]);
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_USERS');
+  const adminId = extractUserId(userOrIdOrRole, 1);
+  const current = await runQueryOne<User & { password_hash: string; pin: string | null }>(
+    'SELECT * FROM users WHERE id = ?',
+    [id]
+  );
   if (!current) throw new Error('User not found');
+
+  let newUsername = current.username;
+  if (userData.username !== undefined) {
+    const trimmed = userData.username.trim();
+    if (!trimmed) throw new Error('Username cannot be empty.');
+    const existing = await runQueryOne('SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?;', [trimmed, id]);
+    if (existing) {
+      throw new Error(`Username "${trimmed}" is already taken.`);
+    }
+    newUsername = trimmed;
+  }
+
+  let finalPin: string | null = current.pin || null;
+  if (userData.pin !== undefined) {
+    if (userData.pin) {
+      finalPin = userData.pin.startsWith('$2') ? userData.pin : bcrypt.hashSync(userData.pin.trim(), 10);
+    } else {
+      finalPin = null;
+    }
+  }
+
+  let finalPasswordHash = current.password_hash;
+  if (userData.password_hash) {
+    finalPasswordHash = userData.password_hash.startsWith('$2') ? userData.password_hash : bcrypt.hashSync(userData.password_hash.trim(), 10);
+  }
 
   await runExecute(
     `UPDATE users SET
+      username = ?,
       full_name = ?,
       role = ?,
       is_active = ?,
       pin = ?,
-      password_hash = COALESCE(?, password_hash)
+      password_hash = ?
      WHERE id = ?;`,
     [
+      newUsername,
       userData.full_name !== undefined ? userData.full_name.trim() : current.full_name,
       userData.role !== undefined ? userData.role : current.role,
       userData.is_active !== undefined ? userData.is_active : current.is_active,
-      userData.pin !== undefined ? userData.pin : current.pin,
-      userData.password_hash || null,
+      finalPin,
+      finalPasswordHash,
       id,
     ]
   );
-  await logAudit(adminUserId, adminName, 'USER_UPDATE', 'user', id, `Updated user "${current.username}".`);
+  await logAudit(adminId, adminName || 'Admin', 'USER_UPDATE', 'user', id, `Updated user "${newUsername}".`);
 }
 
 // Shop Settings
@@ -1531,6 +1873,7 @@ export async function getShopSettings(): Promise<ShopSettings> {
   for (const row of rows) {
     if (
       row.key === 'tax_rate' ||
+      row.key === 'max_cashier_discount_percent' ||
       row.key === 'session_timeout_minutes' ||
       row.key === 'default_reorder_level'
     ) {
@@ -1544,7 +1887,14 @@ export async function getShopSettings(): Promise<ShopSettings> {
   return settings as ShopSettings;
 }
 
-export async function updateShopSettings(newSettings: Partial<ShopSettings>, userId: number, userName: string): Promise<void> {
+export async function updateShopSettings(
+  newSettings: Partial<ShopSettings>,
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName?: string
+): Promise<void> {
+  await requirePermission(userOrIdOrRole, 'CAN_EDIT_SETTINGS');
+  const userId = extractUserId(userOrIdOrRole, 1);
+
   for (const [key, val] of Object.entries(newSettings)) {
     if (val !== undefined) {
       await runExecute(
@@ -1554,12 +1904,23 @@ export async function updateShopSettings(newSettings: Partial<ShopSettings>, use
       );
     }
   }
-  await logAudit(userId, userName, 'SETTINGS_UPDATE', 'settings', 'shop', 'Updated shop business settings and configuration.');
+  await logAudit(userId, userName || 'Admin', 'SETTINGS_UPDATE', 'settings', 'shop', 'Updated store configuration parameters.');
 }
 
-// Clean all business records (books, movements, purchases, sales, expenses, audits)
-// Always creates a safety backup before wiping
-export async function cleanBusinessDatabase(userId: number, userName: string): Promise<{ ok: boolean; backupSize: number }> {
+// Clean all business records (books, movements, purchases, sales, expenses)
+// Does NOT delete audit_logs, appends SYSTEM_CLEAN entry, requires admin + typed confirmation
+export async function cleanBusinessDatabase(
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  userName: string,
+  typedConfirmation: string
+): Promise<{ ok: boolean; backupSize: number }> {
+  await requirePermission(userOrIdOrRole, 'CAN_CLEAN_DATABASE');
+  const userId = extractUserId(userOrIdOrRole, 1);
+
+  if (typedConfirmation !== 'DELETE ALL STORE DATA') {
+    throw new Error('Database cleanup aborted: exact typed confirmation "DELETE ALL STORE DATA" required.');
+  }
+
   const db = await getDatabase();
   const binary = db.export();
   const backupSize = binary?.byteLength || 0;
@@ -1568,44 +1929,27 @@ export async function cleanBusinessDatabase(userId: number, userName: string): P
     throw new Error('Safety backup failed: exported binary is empty. Aborting database cleanup to prevent data loss.');
   }
 
-  // Save emergency safety backup in IndexedDB and/or localStorage
-  let backupSaved = false;
-  let backupError: any = null;
-
-  try {
-    if (typeof window !== 'undefined' && window.indexedDB) {
-      const idb = await openIDB();
-      await new Promise<void>((resolve, reject) => {
-        const tx = idb.transaction('sqlite', 'readwrite');
-        const store = tx.objectStore('sqlite');
-        const req = store.put(binary, 'pre_cleanup_safety_backup');
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
-      });
-      backupSaved = true;
-    }
-  } catch (err) {
-    backupError = err;
+  // Verify backup integrity BEFORE clean
+  const isVerified = await verifyDatabaseBinary(binary);
+  if (!isVerified) {
+    throw new Error('Pre-cleanup safety backup verification failed. Aborting database cleanup.');
   }
 
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem('kitabupos_pre_cleanup_backup', uint8ArrayToBase64(binary));
-      backupSaved = true;
-    } catch (err) {
-      if (!backupSaved) {
-        backupError = err;
-      }
-    }
-  }
-
-  // If running in a browser and no backup could be written, strictly abort!
-  if (typeof window !== 'undefined' && !backupSaved) {
-    throw new Error(`Safety backup failed: ${backupError?.message || 'Local storage write error'}. Aborting database cleanup to prevent data loss.`);
+  // Save verified safety backup in IndexedDB (never localStorage)
+  if (typeof window !== 'undefined' && window.indexedDB) {
+    const idb = await openIDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = idb.transaction('sqlite', 'readwrite');
+      const store = tx.objectStore('sqlite');
+      const req = store.put(binary, 'pre_cleanup_safety_backup');
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
   }
 
   const now = new Date().toISOString();
 
+  db.run('PRAGMA foreign_keys = ON;');
   db.run('BEGIN TRANSACTION;');
   try {
     db.run('DELETE FROM sale_items;');
@@ -1616,11 +1960,10 @@ export async function cleanBusinessDatabase(userId: number, userName: string): P
     db.run('DELETE FROM stock_movements;');
     db.run('DELETE FROM books;');
     db.run('DELETE FROM expenses;');
-    db.run('DELETE FROM audit_logs;');
-
+    // DO NOT delete audit_logs! Append SYSTEM_CLEAN entry
     db.run(
       `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at)
-       VALUES (?, ?, 'SYSTEM_CLEAN_DATABASE', 'database', 'system', 'Demonstration/business data cleared. Empty business database ready for production.', ?);`,
+       VALUES (?, ?, 'SYSTEM_CLEAN', 'database', 'all', 'All business data cleared by administrator. Verified safety backup preserved.', ?);`,
       [userId, userName, now]
     );
 
@@ -1633,8 +1976,14 @@ export async function cleanBusinessDatabase(userId: number, userName: string): P
   }
 }
 
-// Export Human-Readable Database JSON
-export async function exportDatabaseJson(): Promise<string> {
+// Export Human-Readable Database JSON (Financial Export - Gated)
+export async function exportDatabaseJson(
+  userOrIdOrRole?: { role: UserRole; id?: number } | UserRole | number
+): Promise<string> {
+  if (userOrIdOrRole) {
+    await requirePermission(userOrIdOrRole, 'CAN_EXPORT_FINANCIALS');
+  }
+
   const [bList, sList, pList, smList, suppList, expList, settings, userList, logs] = await Promise.all([
     runQuery('SELECT * FROM books;'),
     runQuery('SELECT * FROM sales;'),

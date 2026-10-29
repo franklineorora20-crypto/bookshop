@@ -1,81 +1,84 @@
 # KitabuPOS Backup & Disaster Recovery Guide
 
-Because KitabuPOS operates 100% offline without remote cloud servers, the business owner holds complete ownership and custody of all store data. This guide outlines standard operating procedures for safeguarding, backing up, and restoring the bookshop database.
+Because KitabuPOS operates 100% offline without remote cloud servers, the business owner retains complete custody and sovereignty of all store data. This guide outlines standard operating procedures for safeguarding, backing up, and restoring the bookshop database.
 
 ---
 
-## 1. The 3-2-1 Offline Backup Strategy
+## 1. Storage Architecture & Backup Locations
 
-Bookshops handle essential financial records, tax data, and high-value inventory. We recommend implementing the **3-2-1 rule**:
-1. **3 Copies of Data**:
-   - The primary active database on the store computer.
-   - A daily backup copy on an external USB flash drive.
-   - A weekly backup copy stored off-site (or on a manager's secondary laptop/storage).
-2. **2 Different Media Types**:
-   - Local PC internal solid-state drive (SSD).
-   - Removable USB flash drive / external hard disk.
-3. **1 Off-Site Location**:
-   - Keep a secondary USB drive away from the physical bookstore in case of physical theft, fire, or hardware failure.
-
----
-
-## 2. Performing a Manual SQLite Database Backup
-
-### Step-by-Step Procedure:
-1. Log into KitabuPOS using an **Administrator** or **Store Manager** account.
-2. Navigate to **Settings & Backups** (`Alt + T`).
-3. Click on the **Database Backup & Integrity** tab.
-4. Click **Download .sqlite Database Backup**.
-5. Your browser / desktop environment will immediately save the file:
-   ```
-   KitabuPOS_Backup_YYYY-MM-DDTHH-mm-ss.sqlite
-   ```
-6. Open your Windows File Explorer (`Win + E`), locate the downloaded file in your `Downloads` folder, and copy it to your plugged-in USB drive.
-7. Safely eject the USB drive.
-
-### Optional: Exporting a Readable JSON Ledger
-In addition to the raw SQLite database binary, you can click **Export Readable JSON**. This produces a human-readable text document containing all books, sales, purchases, expenses, and settings that can be opened in text editors, Excel, or ingested into accounting software.
+1. **Active Database Storage**:
+   - The active database is currently persisted in browser-isolated IndexedDB storage within the application renderer, architected for future migration to main-process SQLite.
+2. **Automated Electron Backups**:
+   - The desktop system automatically creates verified `.sqlite` snapshots in the operating system application data folder:
+     ```
+     %APPDATA%\KitabuPOS\Backups\
+     ```
+   - **Rotation Policy**: Maintains at most **14 daily** and **8 weekly** backup files automatically. Old files exceeding retention limits are pruned.
+3. **Secondary Backup Destination**:
+   - In **Settings -> Database Backup**, an administrator can choose an optional secondary directory (e.g. an external USB flash drive `D:\KitabuPOS_Backups`). Every automated and manual backup is mirrored to this folder.
+4. **Trigger Intervals**:
+   - **On Application Startup**: Checks if the last backup is overdue and takes a snapshot immediately.
+   - **Hourly While Running**: Takes background snapshots according to the configured schedule (`daily` or `weekly`).
+   - **On Application Quit**: Triggers an emergency snapshot before closing the window.
 
 ---
 
-## 3. Database Restoration & Recovery
+## 2. Overdue Backup Warning Banner
 
-In the event of a computer crash, hard drive replacement, or data corruption, follow these steps to restore your records:
-
-### Restoration Steps:
-1. Install a clean copy of KitabuPOS on the replacement Windows computer.
-2. Open KitabuPOS and log in with your administrative credentials.
-3. Go to **Settings & Backups** -> **Database Backup & Integrity**.
-4. In the "Restore from SQLite Backup File" section, click **Select .sqlite File to Restore**.
-5. Locate and select your backup file (e.g., `KitabuPOS_Backup_2026-10-20.sqlite`) from your USB drive.
-6. The system will prompt:
-   > *"DANGER: Restoring a database will replace the current active inventory, sales, and accounts with records from the selected backup. A safety pre-restore backup will be created automatically. Do you wish to proceed?"*
-7. Click **OK**.
-8. KitabuPOS will:
-   - Create an internal pre-restore snapshot of the current state.
-   - Load the replacement SQLite binary.
-   - Execute `PRAGMA integrity_check;` to verify page and index consistency.
-   - Refresh all tables, inventory balances, and historical ledgers.
-9. A confirmation banner will indicate: *"Database restored successfully."*
+To protect stores against forgotten backups:
+- If `backup_schedule = 'daily'` and no verified backup has been completed within **2 days**, a persistent amber banner displays at the top of the till.
+- If `backup_schedule = 'weekly'` and no verified backup has been completed within **8 days**, the banner displays.
+- Clicking **Back Up Now** on the banner executes an immediate verified snapshot, writes it to disk, and dismisses the alert.
 
 ---
 
-## 4. Verifying Database Integrity
+## 3. Mandatory Binary Verification
 
-To ensure the local database file is healthy and free from disk corruption:
-1. Go to **Settings & Backups** -> **Database Backup & Integrity**.
-2. Under "PRAGMA integrity_check", click **Verify Database Integrity**.
-3. The system scans all B-tree structures, foreign key constraints, and database pages.
-4. If healthy, the system displays:
-   > *"Database integrity check passed (status: ok). No corruption detected."*
+KitabuPOS enforces pre-execution verification on all database binary operations:
+- Every candidate backup must pass SQLite `PRAGMA integrity_check` before any restore, clean, or schema migration is permitted.
+- If the binary fails the integrity check or is corrupted, the operation is **aborted immediately** without altering active records.
+- Pre-restore and pre-cleanup safety copies are stored in IndexedDB (never localStorage).
 
 ---
 
-## 5. Cleaning Demonstration Data for Clean Client Handover
+## 4. Manual Backup & JSON Export
 
-If you configured test records while exploring the application, you can restore the system to a clean production state before commencing real sales:
-1. Navigate to **Settings & Backups** -> **Database Backup & Integrity**.
-2. Locate the red panel: **Clean Demonstration Data (Client Handover)**.
-3. Click **Clear Demo Records...**.
-4. Type **`CLEAN`** in the confirmation input and click **Confirm Clean Reset**.
-5. The system automatically creates a full emergency backup of the current database before wiping demo books, sales, and expenses, leaving your store settings and administrator credentials intact.
+### Download Direct SQLite Binary:
+1. Log into KitabuPOS as an **Administrator** or **Store Manager**.
+2. Navigate to **Settings & Backups** (`Alt + T`) -> **Database Backup & Integrity**.
+3. Click **Run Verified Backup Now** or **Download SQLite .db File**.
+4. The verified `.sqlite` file is saved to your computer.
+
+### Export Readable JSON Ledger:
+Click **Export JSON Data** to generate a human-readable snapshot of all books, sales, purchases, expenses, and settings for spreadsheet reporting or external auditing.
+
+---
+
+## 5. Database Restoration & Recovery
+
+In the event of a computer failure or accidental data loss:
+1. Open KitabuPOS and log in with Administrator credentials.
+2. Navigate to **Settings & Backups** -> **Database Backup & Integrity**.
+3. Under "Restore Database from Backup File", click **Choose .sqlite Backup File**.
+4. Select the `.sqlite` backup file from your computer or USB drive.
+5. KitabuPOS will:
+   - Run `PRAGMA integrity_check` on the backup file. If invalid, restoration is rejected.
+   - Verify that required core tables (`books`, `sales`, `users`) exist.
+   - Save an emergency pre-restore safety snapshot of current records in IndexedDB.
+   - Swap the active SQLite database instance and enable foreign key enforcement (`PRAGMA foreign_keys = ON;`).
+   - Log an immutable `DATABASE_RESTORE` entry in the system audit trail.
+6. A success notification will confirm the restoration.
+
+---
+
+## 6. Cleaning Business Data for Production Handover
+
+To clear test or onboarding transactions prior to real-world sales:
+1. Navigate to **Settings & Backups** -> **Data & Maintenance**.
+2. Locate **Clean Business Database (Reset Store Data)** and click the button.
+3. Type the exact confirmation string: **`DELETE ALL STORE DATA`**.
+4. KitabuPOS will:
+   - Create a verified pre-cleanup safety snapshot in IndexedDB.
+   - Atomically wipe transactional data (sales, order items, purchases, book stock movements, expenses).
+   - **Safely preserve** administrator/staff accounts, store settings, and the audit log.
+   - Append an immutable `SYSTEM_CLEAN` entry to `audit_logs`.

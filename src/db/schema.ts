@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('admin', 'cashier')),
+  role TEXT NOT NULL CHECK(role IN ('admin', 'manager', 'cashier')),
   password_hash TEXT NOT NULL,
   pin TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS sales (
 
 CREATE INDEX IF NOT EXISTS idx_sales_receipt ON sales(receipt_number);
 CREATE INDEX IF NOT EXISTS idx_sales_created ON sales(created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_mpesa_unique ON sales(payment_reference) WHERE is_voided = 0 AND payment_reference IS NOT NULL AND payment_reference != '';
 
 CREATE TABLE IF NOT EXISTS sale_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,5 +173,12 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
 CREATE TABLE IF NOT EXISTS shop_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+-- Authentication Lockouts (Persisted Throttling)
+CREATE TABLE IF NOT EXISTS auth_lockouts (
+  identifier TEXT PRIMARY KEY,
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT
 );
 `;
