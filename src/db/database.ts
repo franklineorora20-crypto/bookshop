@@ -78,15 +78,107 @@ export function extractUserId(userOrIdOrRole: any, defaultId = 1): number {
   return defaultId;
 }
 
+export class DatabaseRecoveryRequired extends Error {
+  public corruptData: Uint8Array;
+  constructor(message: string, corruptData: Uint8Array) {
+    super(message);
+    this.name = 'DatabaseRecoveryRequired';
+    this.corruptData = corruptData;
+    Object.setPrototypeOf(this, DatabaseRecoveryRequired.prototype);
+  }
+}
+
+// Global persistence error tracking
+let persistenceError: string | null = null;
+const persistenceListeners = new Set<(err: string | null) => void>();
+
+export function getPersistenceError(): string | null {
+  return persistenceError;
+}
+
+export function setPersistenceError(err: Error | string | null): void {
+  persistenceError = err ? (typeof err === 'string' ? err : err.message) : null;
+  persistenceListeners.forEach((listener) => listener(persistenceError));
+}
+
+export function subscribePersistenceError(listener: (err: string | null) => void): () => void {
+  persistenceListeners.add(listener);
+  listener(persistenceError);
+  return () => {
+    persistenceListeners.delete(listener);
+  };
+}
+
+// In-memory mock storage for Node.js test environments
+let mockStorageForTests: Map<string, Uint8Array> | null = null;
+let forcePersistFailureForTests = false;
+
+export function __setMockStorageForTests(map: Map<string, Uint8Array> | null): void {
+  mockStorageForTests = map;
+}
+
+export function __setForcePersistFailureForTests(fail: boolean): void {
+  forcePersistFailureForTests = fail;
+}
+
+export function __resetDatabaseStateForTests(): void {
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch {}
+  }
+  dbInstance = null;
+  initPromise = null;
+  persistenceError = null;
+  forcePersistFailureForTests = false;
+}
+
+export function getSqlWasmUrl(): string {
+  return new URL('sql-wasm.wasm', import.meta.url).href;
+}
+
+export async function getSqlJsEngine(): Promise<SqlJsStatic> {
+  if (SQL) return SQL;
+  if (typeof window !== 'undefined') {
+    SQL = await initSqlJs({
+      locateFile: () => getSqlWasmUrl(),
+    });
+  } else {
+    SQL = await initSqlJs();
+  }
+  return SQL;
+}
+
+export function safeRollback(db: Database): void {
+  try {
+    db.run('ROLLBACK;');
+  } catch {
+    // Guard rollback so it cannot throw
+  }
+}
+
 // Helpers to save database to storage
-async function persistDbToStorage(db: Database): Promise<void> {
+export async function persistDbToStorage(db: Database): Promise<void> {
   try {
     const binary = db.export();
-    if (typeof window !== 'undefined' && window.indexedDB) {
+    db.run('PRAGMA foreign_keys = ON;');
+    if (forcePersistFailureForTests) {
+      throw new Error('Forced database persistence write failure.');
+    }
+    if (mockStorageForTests) {
+      mockStorageForTests.set('main_db', binary);
+    } else if (typeof window !== 'undefined' && window.indexedDB) {
       await saveToIndexedDB(binary);
     }
-  } catch (err) {
-    console.error('Failed to persist SQLite database:', err);
+    if (persistenceError) {
+      setPersistenceError(null);
+    }
+  } catch (err: any) {
+    db.run('PRAGMA foreign_keys = ON;');
+    const errorMsg = err?.message || String(err);
+    console.error('Failed to persist SQLite database:', errorMsg);
+    setPersistenceError(err);
+    throw err;
   }
 }
 
@@ -116,7 +208,52 @@ async function saveToIndexedDB(data: Uint8Array): Promise<void> {
   });
 }
 
+export async function saveCorruptBackupToIndexedDB(data: Uint8Array): Promise<void> {
+  if (mockStorageForTests) {
+    mockStorageForTests.set('corrupt', data);
+    return;
+  }
+  if (typeof window !== 'undefined' && window.indexedDB) {
+    try {
+      const idb = await openIDB();
+      await new Promise<void>((resolve, reject) => {
+        const tx = idb.transaction('sqlite', 'readwrite');
+        const store = tx.objectStore('sqlite');
+        const req = store.put(data, 'corrupt');
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    } catch (e) {
+      console.error('Failed to write corrupt backup to IndexedDB:', e);
+    }
+  }
+}
+
+export async function getCorruptBackupFromIndexedDB(): Promise<Uint8Array | null> {
+  if (mockStorageForTests) {
+    return mockStorageForTests.get('corrupt') || null;
+  }
+  if (typeof window !== 'undefined' && window.indexedDB) {
+    try {
+      const idb = await openIDB();
+      return new Promise((resolve, reject) => {
+        const tx = idb.transaction('sqlite', 'readonly');
+        const store = tx.objectStore('sqlite');
+        const req = store.get('corrupt');
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 async function loadFromIndexedDB(): Promise<Uint8Array | null> {
+  if (mockStorageForTests) {
+    return mockStorageForTests.get('main_db') || null;
+  }
   try {
     const idb = await openIDB();
     return new Promise((resolve, reject) => {
@@ -134,15 +271,9 @@ async function loadFromIndexedDB(): Promise<Uint8Array | null> {
 // Binary Integrity Verifier
 export async function verifyDatabaseBinary(binary: Uint8Array): Promise<boolean> {
   if (!binary || binary.byteLength === 0) return false;
-  if (!SQL) {
-    if (typeof window !== 'undefined') {
-      SQL = await initSqlJs({ locateFile: (file) => `/${file}` });
-    } else {
-      SQL = await initSqlJs();
-    }
-  }
+  const sqlEngine = await getSqlJsEngine();
   try {
-    const testDb = new SQL.Database(binary);
+    const testDb = new sqlEngine.Database(binary);
     const check = testDb.exec('PRAGMA integrity_check;');
     const ok = check[0]?.values[0]?.[0] === 'ok';
     testDb.close();
@@ -158,41 +289,36 @@ export async function getDatabase(): Promise<Database> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    if (!SQL) {
-      if (typeof window !== 'undefined') {
-        SQL = await initSqlJs({
-          locateFile: (file) => `/${file}`,
-        });
-      } else {
-        SQL = await initSqlJs();
-      }
-    }
+    const sqlEngine = await getSqlJsEngine();
 
     let existingData: Uint8Array | null = null;
-    if (typeof window !== 'undefined' && window.indexedDB) {
+    if (mockStorageForTests || (typeof window !== 'undefined' && window.indexedDB)) {
       existingData = await loadFromIndexedDB();
     }
 
     let db: Database;
     if (existingData && existingData.length > 0) {
       try {
-        db = new SQL.Database(existingData);
+        db = new sqlEngine.Database(existingData);
         // Verify integrity
         const check = db.exec('PRAGMA integrity_check;');
         if (check[0]?.values[0]?.[0] !== 'ok') {
-          console.warn('Integrity check failed on stored DB, re-initializing fresh schema.');
-          db = new SQL.Database();
-          await initFreshDatabase(db);
-        } else {
-          await migrateDatabase(db);
+          throw new Error(`Integrity check returned: ${check[0]?.values[0]?.[0]}`);
         }
-      } catch (err) {
-        console.warn('Failed to load existing database, starting fresh:', err);
-        db = new SQL.Database();
-        await initFreshDatabase(db);
+        await migrateDatabase(db);
+      } catch (err: any) {
+        // NEVER create a fresh database when stored data exists.
+        // Copy stored bytes into "corrupt" record in IndexedDB and throw typed error.
+        await saveCorruptBackupToIndexedDB(existingData);
+        initPromise = null;
+        dbInstance = null;
+        throw new DatabaseRecoveryRequired(
+          `Stored database is corrupt or failed integrity verification: ${err?.message || String(err)}`,
+          existingData
+        );
       }
     } else {
-      db = new SQL.Database();
+      db = new sqlEngine.Database();
       await initFreshDatabase(db);
     }
 
@@ -202,6 +328,35 @@ export async function getDatabase(): Promise<Database> {
   })();
 
   return initPromise;
+}
+
+export async function startFreshAfterCorruptRecovery(confirmation: string): Promise<void> {
+  if (confirmation.trim() !== 'START FRESH') {
+    throw new Error('Confirmation "START FRESH" is required.');
+  }
+
+  // Ensure corrupt copy is preserved
+  let existingData: Uint8Array | null = null;
+  if (mockStorageForTests || (typeof window !== 'undefined' && window.indexedDB)) {
+    existingData = await loadFromIndexedDB();
+    if (existingData && existingData.length > 0) {
+      await saveCorruptBackupToIndexedDB(existingData);
+    }
+  }
+
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch {}
+    dbInstance = null;
+  }
+  initPromise = null;
+
+  const sqlEngine = await getSqlJsEngine();
+  const freshDb = new sqlEngine.Database();
+  await initFreshDatabase(freshDb);
+  freshDb.run('PRAGMA foreign_keys = ON;');
+  dbInstance = freshDb;
 }
 
 export async function migrateDatabase(db: Database): Promise<void> {
@@ -258,7 +413,7 @@ export async function migrateDatabase(db: Database): Promise<void> {
     db.run('COMMIT;');
     await persistDbToStorage(db);
   } catch (migErr) {
-    db.run('ROLLBACK;');
+    safeRollback(db);
     console.error('Migration failed and rolled back:', migErr);
     throw migErr;
   }
@@ -352,15 +507,8 @@ export async function restoreDatabaseBinary(
     };
   }
 
-  if (!SQL) {
-    if (typeof window !== 'undefined') {
-      SQL = await initSqlJs({ locateFile: (file) => `/${file}` });
-    } else {
-      SQL = await initSqlJs();
-    }
-  }
-
-  const candidateDb = new SQL.Database(data);
+  const sqlEngine = await getSqlJsEngine();
+  const candidateDb = new sqlEngine.Database(data);
   const tables = candidateDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('books', 'sales', 'users');");
   if (!tables[0] || tables[0].values.length < 3) {
     candidateDb.close();
@@ -403,14 +551,23 @@ export async function logAudit(
   action: string,
   entity: string,
   entityId: string | number,
-  details: string
+  details: string,
+  txDb?: Database
 ): Promise<void> {
   const now = new Date().toISOString();
-  await runExecute(
-    `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?);`,
-    [userId, userName, action, entity, String(entityId), details, now]
-  );
+  if (txDb) {
+    txDb.run(
+      `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?);`,
+      [userId, userName, action, entity, String(entityId), details, now]
+    );
+  } else {
+    await runExecute(
+      `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?);`,
+      [userId, userName, action, entity, String(entityId), details, now]
+    );
+  }
 }
 
 // ==========================================
@@ -755,19 +912,20 @@ export async function adjustStock(
       [bookId, movementType, quantityChange, prevQty, newQty, cost, notes || '', userId, now]
     );
 
-    db.run('COMMIT;');
-    await persistDbToStorage(db);
-
     await logAudit(
       userId,
       userName || 'User',
       'STOCK_ADJUSTMENT',
       'book',
       bookId,
-      `Adjusted stock for "${title}" by ${quantityChange > 0 ? '+' : ''}${quantityChange} units (${movementType}). New stock: ${newQty}. Notes: ${notes}`
+      `Adjusted stock for "${title}" by ${quantityChange > 0 ? '+' : ''}${quantityChange} units (${movementType}). New stock: ${newQty}. Notes: ${notes}`,
+      db
     );
+
+    db.run('COMMIT;');
+    await persistDbToStorage(db);
   } catch (error) {
-    db.run('ROLLBACK;');
+    safeRollback(db);
     throw error;
   }
 }
@@ -1062,7 +1220,7 @@ export async function processSale(
 
     return { saleId: nextSaleId, receiptNumber };
   } catch (error) {
-    db.run('ROLLBACK;');
+    safeRollback(db);
     throw error;
   }
 }
@@ -1133,19 +1291,20 @@ export async function voidSale(
       [reason, userId, now, saleId]
     );
 
-    db.run('COMMIT;');
-    await persistDbToStorage(db);
-
     await logAudit(
       userId,
       userName || 'User',
       'SALE_VOID',
       'sale',
       saleId,
-      `Voided sale #${receiptNumber} (KES ${grandTotal.toFixed(2)}). Reason: ${reason}. Inventory restocked.`
+      `Voided sale #${receiptNumber} (KES ${grandTotal.toFixed(2)}). Reason: ${reason}. Inventory restocked.`,
+      db
     );
+
+    db.run('COMMIT;');
+    await persistDbToStorage(db);
   } catch (error) {
-    db.run('ROLLBACK;');
+    safeRollback(db);
     throw error;
   }
 }
@@ -1329,20 +1488,22 @@ export async function recordPurchase(
       }
     }
 
-    db.run('COMMIT;');
-    await persistDbToStorage(db);
-
     await logAudit(
       userId,
       userName || 'User',
       'PURCHASE_RECORD',
       'purchase',
       lastInsertId,
-      `Recorded purchase invoice #${purchase.invoiceNumber} (KES ${purchase.totalCost.toFixed(2)}) from supplier #${purchase.supplierId}.`
+      `Recorded purchase invoice #${purchase.invoiceNumber} (KES ${purchase.totalCost.toFixed(2)}) from supplier #${purchase.supplierId}.`,
+      db
     );
+
+    db.run('COMMIT;');
+    await persistDbToStorage(db);
+
     return lastInsertId;
   } catch (error) {
-    db.run('ROLLBACK;');
+    safeRollback(db);
     throw error;
   }
 }
@@ -1402,11 +1563,11 @@ export async function receivePendingPurchase(
       );
     }
 
+    await logAudit(userId, userName || 'User', 'PURCHASE_RECEIVE', 'purchase', purchaseId, `Received stock delivery for purchase invoice #${invoiceNumber}.`, db);
     db.run('COMMIT;');
     await persistDbToStorage(db);
-    await logAudit(userId, userName || 'User', 'PURCHASE_RECEIVE', 'purchase', purchaseId, `Received stock delivery for purchase invoice #${invoiceNumber}.`);
   } catch (err) {
-    db.run('ROLLBACK;');
+    safeRollback(db);
     throw err;
   }
 }
@@ -1971,7 +2132,7 @@ export async function cleanBusinessDatabase(
     await persistDbToStorage(db);
     return { ok: true, backupSize };
   } catch (err) {
-    db.run('ROLLBACK;');
+    safeRollback(db);
     throw err;
   }
 }
@@ -2051,13 +2212,7 @@ export async function resetDatabaseToFreshSetup(): Promise<void> {
     localStorage.removeItem('kitabupos_auth_session');
   }
 
-  if (!SQL) {
-    if (typeof window !== 'undefined') {
-      SQL = await initSqlJs({ locateFile: (file) => `/${file}` });
-    } else {
-      SQL = await initSqlJs();
-    }
-  }
+  const sqlEngine = await getSqlJsEngine();
 
   if (dbInstance) {
     try {
@@ -2067,7 +2222,7 @@ export async function resetDatabaseToFreshSetup(): Promise<void> {
     }
   }
 
-  const freshDb = new SQL.Database();
+  const freshDb = new sqlEngine.Database();
   await initFreshDatabase(freshDb);
   freshDb.run('PRAGMA foreign_keys = ON;');
   dbInstance = freshDb;

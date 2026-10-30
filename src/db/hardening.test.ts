@@ -27,6 +27,12 @@ import {
   resetDatabaseToFreshSetup,
   runExecute,
   runQueryOne,
+  DatabaseRecoveryRequired,
+  getPersistenceError,
+  persistDbToStorage,
+  __setMockStorageForTests,
+  __setForcePersistFailureForTests,
+  __resetDatabaseStateForTests,
 } from './database.ts';
 import {
   loginWithPassword,
@@ -540,3 +546,64 @@ test('resetDatabaseToFreshSetup clears all saved data and resets is_setup_comple
   const sales = await runQueryOne<{ count: number }>('SELECT COUNT(*) as count FROM sales;');
   assert.equal(Number(sales?.count), 0);
 });
+
+test('C1 [TEST]: corrupt stored bytes lead to DatabaseRecoveryRequired and the bytes are preserved, no fresh DB is created', async () => {
+  __resetDatabaseStateForTests();
+  const corruptBytes = new Uint8Array([99, 101, 102, 103, 104, 105]);
+  const mockStorage = new Map<string, Uint8Array>();
+  mockStorage.set('main_db', corruptBytes);
+  __setMockStorageForTests(mockStorage);
+
+  try {
+    await assert.rejects(
+      async () => {
+        await getDatabase();
+      },
+      (err: any) => {
+        assert.ok(err instanceof DatabaseRecoveryRequired || err?.name === 'DatabaseRecoveryRequired');
+        assert.deepEqual(err.corruptData, corruptBytes);
+        return true;
+      },
+      'Corrupt bytes must throw DatabaseRecoveryRequired'
+    );
+
+    // Verify stored bytes were copied to 'corrupt' in storage
+    const preserved = mockStorage.get('corrupt');
+    assert.ok(preserved, 'Corrupt bytes must be preserved in corrupt store');
+    assert.deepEqual(preserved, corruptBytes, 'Corrupt record must exactly match original corrupt bytes');
+  } finally {
+    __resetDatabaseStateForTests();
+    __setMockStorageForTests(null);
+  }
+});
+
+test('C2 [TEST]: a failing persist sets persistenceError', async () => {
+  __resetDatabaseStateForTests();
+  const db = await getDatabase();
+  assert.equal(getPersistenceError(), null);
+
+  __setForcePersistFailureForTests(true);
+  try {
+    await assert.rejects(
+      async () => {
+        await persistDbToStorage(db);
+      },
+      /persistence write failure/i
+    );
+    assert.ok(getPersistenceError(), 'persistenceError must be set on failure');
+    assert.match(getPersistenceError()!, /persistence write failure/i);
+  } finally {
+    __setForcePersistFailureForTests(false);
+    __resetDatabaseStateForTests();
+  }
+});
+
+test('C3 [TEST]: foreign keys are ON after a save', async () => {
+  __resetDatabaseStateForTests();
+  const db = await getDatabase();
+  await persistDbToStorage(db);
+
+  const fkCheck = db.exec('PRAGMA foreign_keys;');
+  assert.equal(fkCheck[0]?.values[0]?.[0], 1, 'PRAGMA foreign_keys must be 1 (ON) after persistDbToStorage');
+});
+

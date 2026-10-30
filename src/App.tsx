@@ -19,6 +19,8 @@ import { ReceiptModal } from './components/pos/ReceiptModal.tsx';
 import { OfflineIndicator } from './components/common/OfflineIndicator.tsx';
 import { PWAInstallPrompt } from './components/common/PWAInstallPrompt.tsx';
 import { BackupBanner } from './components/common/BackupBanner.tsx';
+import { PersistenceAlertBanner } from './components/common/PersistenceAlertBanner.tsx';
+import { DatabaseRecoveryScreen } from './components/common/DatabaseRecoveryScreen.tsx';
 import { Book, Sale, ShopSettings, User } from './types/index.ts';
 import {
   getDatabase,
@@ -29,6 +31,7 @@ import {
   exportDatabaseBinary,
   checkDatabaseIntegrity,
   resetDatabaseToFreshSetup,
+  DatabaseRecoveryRequired,
 } from './db/database.ts';
 import { FirstRunWizard } from './components/setup/FirstRunWizard.tsx';
 import { getStoredSession, saveSession, hasPermission } from './services/auth.ts';
@@ -37,6 +40,7 @@ export default function App() {
   // Authentication & session
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [recoveryError, setRecoveryError] = useState<{ message: string; corruptData?: Uint8Array } | null>(null);
 
   // App navigation
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
@@ -70,8 +74,15 @@ export default function App() {
       setDashboardMetrics(metrics);
       setShopSettings(settings);
       setLastBackupTime(backupTime);
-    } catch (err) {
+      setRecoveryError(null);
+    } catch (err: any) {
       console.error('Failed to load database records:', err);
+      if (err instanceof DatabaseRecoveryRequired || err?.name === 'DatabaseRecoveryRequired') {
+        setRecoveryError({
+          message: err.message,
+          corruptData: err.corruptData,
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -261,35 +272,55 @@ export default function App() {
     }
   };
 
-  // If first-time run and setup wizard not completed, display wizard first!
-  if (!loading && shopSettings && !shopSettings.is_setup_completed) {
+  // If database corruption or recovery required, display Recovery Screen immediately!
+  if (recoveryError) {
     return (
-      <FirstRunWizard
-        initialSettings={shopSettings}
-        onComplete={(adminUser, updatedSettings) => {
-          setShopSettings(updatedSettings);
-          setCurrentUser(adminUser);
-          setIsLocked(false);
-          lastActivityRef.current = Date.now();
-          saveSession({ userId: adminUser.id, role: adminUser.role, name: adminUser.full_name, locked: false });
+      <DatabaseRecoveryScreen
+        errorMessage={recoveryError.message}
+        corruptData={recoveryError.corruptData}
+        onRecovered={() => {
+          setRecoveryError(null);
           refreshAllData();
         }}
       />
     );
   }
 
+  // If first-time run and setup wizard not completed, display wizard first!
+  if (!loading && shopSettings && !shopSettings.is_setup_completed) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <PersistenceAlertBanner onBackupNow={handleBackupNow} />
+        <FirstRunWizard
+          initialSettings={shopSettings}
+          onComplete={(adminUser, updatedSettings) => {
+            setShopSettings(updatedSettings);
+            setCurrentUser(adminUser);
+            setIsLocked(false);
+            lastActivityRef.current = Date.now();
+            saveSession({ userId: adminUser.id, role: adminUser.role, name: adminUser.full_name, locked: false });
+            refreshAllData();
+          }}
+        />
+      </div>
+    );
+  }
+
   // If not logged in, show Login Screen
   if (!currentUser) {
     return (
-      <LoginView
-        onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          setIsLocked(false);
-          lastActivityRef.current = Date.now();
-          saveSession({ userId: user.id, role: user.role, name: user.full_name, locked: false });
-        }}
-        onResetAndSetup={handleResetAndStartSetup}
-      />
+      <div className="min-h-screen flex flex-col">
+        <PersistenceAlertBanner onBackupNow={handleBackupNow} />
+        <LoginView
+          onLoginSuccess={(user) => {
+            setCurrentUser(user);
+            setIsLocked(false);
+            lastActivityRef.current = Date.now();
+            saveSession({ userId: user.id, role: user.role, name: user.full_name, locked: false });
+          }}
+          onResetAndSetup={handleResetAndStartSetup}
+        />
+      </div>
     );
   }
 
@@ -333,15 +364,17 @@ export default function App() {
     (dashboardMetrics?.lowStockCount || 0) + (dashboardMetrics?.outOfStockCount || 0);
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans text-slate-800">
-      {/* Persistent Left Sidebar */}
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={(tab) => {
-          setActiveTab(tab);
-          setIsMobileMenuOpen(false);
-        }}
-        currentUser={currentUser}
+    <div className="flex flex-col h-screen bg-slate-100 overflow-hidden font-sans text-slate-800">
+      <PersistenceAlertBanner onBackupNow={handleBackupNow} />
+      <div className="flex flex-1 overflow-hidden">
+        {/* Persistent Left Sidebar */}
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={(tab) => {
+            setActiveTab(tab);
+            setIsMobileMenuOpen(false);
+          }}
+          currentUser={currentUser}
         onLock={handleLock}
         onLogout={handleLogout}
         lowStockCount={lowStockCount}
@@ -431,6 +464,7 @@ export default function App() {
             />
           )}
         </main>
+      </div>
       </div>
 
       {/* Rerun Setup Wizard Modal */}
