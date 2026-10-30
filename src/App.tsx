@@ -28,6 +28,7 @@ import {
   getLastBackupTimestamp,
   exportDatabaseBinary,
   checkDatabaseIntegrity,
+  resetDatabaseToFreshSetup,
 } from './db/database.ts';
 import { FirstRunWizard } from './components/setup/FirstRunWizard.tsx';
 import { getStoredSession, saveSession, hasPermission } from './services/auth.ts';
@@ -244,6 +245,22 @@ export default function App() {
     };
   }, [shopSettings, handleBackupNow]);
 
+  // Factory reset: clear all saved data and open initial setup wizard
+  const handleResetAndStartSetup = async () => {
+    try {
+      setLoading(true);
+      await resetDatabaseToFreshSetup();
+      setCurrentUser(null);
+      setIsLocked(false);
+      setIsWizardOpen(false);
+      await refreshAllData();
+    } catch (err) {
+      console.error('Failed to reset database:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // If first-time run and setup wizard not completed, display wizard first!
   if (!loading && shopSettings && !shopSettings.is_setup_completed) {
     return (
@@ -271,6 +288,7 @@ export default function App() {
           lastActivityRef.current = Date.now();
           saveSession({ userId: user.id, role: user.role, name: user.full_name, locked: false });
         }}
+        onResetAndSetup={handleResetAndStartSetup}
       />
     );
   }
@@ -409,6 +427,7 @@ export default function App() {
               currentUser={currentUser}
               onRefreshData={refreshAllData}
               onOpenWizard={() => setIsWizardOpen(true)}
+              onResetAndSetup={handleResetAndStartSetup}
             />
           )}
         </main>

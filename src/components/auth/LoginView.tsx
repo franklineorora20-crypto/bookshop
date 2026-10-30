@@ -2,24 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { BookOpen, AlertCircle, ArrowRight, Eye, EyeOff, ShieldCheck, Lock, Clock } from 'lucide-react';
-import { loginWithPassword, isDefaultPassword, changeUserPassword } from '../../services/auth.ts';
+import { loginWithPassword, isDefaultPassword, changeUserPassword, validatePassword } from '../../services/auth.ts';
 import type { User as UserType } from '../../types/index.ts';
 import { Button } from '../common/Button.tsx';
 import { Modal } from '../common/Modal.tsx';
 
 interface LoginViewProps {
   onLoginSuccess: (user: UserType) => void;
+  onResetAndSetup?: () => void;
 }
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 30;
 
-export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAndSetup }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Reset all data modal state
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   // Rate limiting failed attempts
   const [failedAttempts, setFailedAttempts] = useState(0);
@@ -89,8 +94,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     if (!pendingUser) return;
     setPasswordChangeError(null);
 
-    if (newPassword.length < 6) {
-      setPasswordChangeError('New password must be at least 6 characters long.');
+    const validation = validatePassword(newPassword);
+    if (!validation.valid) {
+      setPasswordChangeError(validation.error || 'Password must be at least 8 characters long.');
       return;
     }
     if (newPassword === 'admin123' || newPassword === 'cashier123') {
@@ -114,12 +120,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     } finally {
       setIsChangingPassword(false);
     }
-  };
-
-  const handleQuickFill = (u: string, p: string) => {
-    setUsername(u);
-    setPassword(p);
-    setError(null);
   };
 
   return (
@@ -172,7 +172,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 disabled:opacity-50"
-              placeholder="e.g. admin or cashier"
+              placeholder="Enter your username"
               autoFocus
             />
           </div>
@@ -215,28 +215,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           </Button>
         </form>
 
-        {/* Quick Role Fillers for initial setup */}
-        <div className="p-4 bg-neutral-50 border-t border-neutral-100">
-          <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold text-center mb-2.5">
-            Initial Demo Accounts
-          </p>
-          <div className="grid grid-cols-2 gap-2">
+        {onResetAndSetup && (
+          <div className="p-3.5 bg-neutral-50/80 border-t border-neutral-100 text-center">
             <button
               type="button"
-              onClick={() => handleQuickFill('admin', 'admin123')}
-              className="min-h-[44px] py-2 px-3 rounded-lg bg-white border border-neutral-200 hover:bg-neutral-100 text-xs font-semibold text-neutral-800 transition-colors text-center"
+              onClick={() => setIsResetModalOpen(true)}
+              className="text-xs text-neutral-500 hover:text-neutral-900 underline font-medium transition-colors cursor-pointer"
             >
-              Fill Admin Creds
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickFill('cashier', 'cashier123')}
-              className="min-h-[44px] py-2 px-3 rounded-lg bg-white border border-neutral-200 hover:bg-neutral-100 text-xs font-semibold text-neutral-800 transition-colors text-center"
-            >
-              Fill Cashier Creds
+              Clear all saved data & start fresh setup
             </button>
           </div>
-        </div>
+        )}
       </motion.div>
 
       {/* Mandatory Password Change Modal for Seeded Accounts */}
@@ -323,6 +312,53 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Factory Reset Confirmation Modal */}
+      <Modal
+        isOpen={isResetModalOpen}
+        onClose={() => !isResetting && setIsResetModalOpen(false)}
+        title="⚠️ Clear All Saved Data"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-950 text-sm space-y-2">
+            <div className="font-semibold text-rose-900">Start new bookshop info setup?</div>
+            <p className="text-xs text-rose-800 leading-relaxed">
+              This action will clear all locally stored records, receipts, and user accounts from this browser.
+              KitabuPOS will restart the initial Setup Wizard so you can enter your genuine shop identity, payment numbers, and new administrator credentials from scratch.
+            </p>
+          </div>
+
+          <div className="pt-2 flex justify-end gap-3 border-t border-neutral-100">
+            <Button
+              variant="secondary"
+              onClick={() => setIsResetModalOpen(false)}
+              disabled={isResetting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={isResetting}
+              onClick={async () => {
+                if (!onResetAndSetup) return;
+                setIsResetting(true);
+                try {
+                  await onResetAndSetup();
+                  setIsResetModalOpen(false);
+                  toast.success('Database cleared. Starting setup wizard.');
+                } catch (e: any) {
+                  toast.error(e.message || 'Failed to clear database');
+                } finally {
+                  setIsResetting(false);
+                }
+              }}
+            >
+              Wipe Data & Start Setup
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

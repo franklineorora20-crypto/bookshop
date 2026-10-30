@@ -144,7 +144,7 @@ export async function loginWithPassword(username: string, password: string): Pro
     created_at: string;
     last_login?: string;
   }>(
-    'SELECT id, username, full_name, role, password_hash, is_active, created_at, last_login FROM users WHERE LOWER(username) = LOWER(?) AND is_active = 1;',
+    'SELECT id, username, full_name, role, password_hash, is_active, created_at, last_login FROM users WHERE LOWER(TRIM(username)) = LOWER(?) AND is_active = 1;',
     [trimmedUsername]
   );
 
@@ -153,7 +153,7 @@ export async function loginWithPassword(username: string, password: string): Pro
     throw new Error('Invalid username or account is deactivated.');
   }
 
-  const isValid = bcrypt.compareSync(password, userRow.password_hash);
+  const isValid = bcrypt.compareSync(password, userRow.password_hash) || bcrypt.compareSync(password.trim(), userRow.password_hash);
   if (!isValid) {
     await recordFailedAttempt(throttleKey);
     throw new Error('Incorrect password. Please try again.');

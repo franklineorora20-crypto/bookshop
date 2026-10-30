@@ -27,6 +27,7 @@ import {
   CreditCard,
   Smartphone,
   Info,
+  RotateCcw,
 } from 'lucide-react';
 import type { ShopSettings, User } from '../../types/index.ts';
 import {
@@ -51,6 +52,7 @@ interface SettingsViewProps {
   currentUser: User | null;
   onRefreshData: () => Promise<void>;
   onOpenWizard?: () => void;
+  onResetAndSetup?: () => Promise<void> | void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -58,10 +60,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   currentUser,
   onRefreshData,
   onOpenWizard,
+  onResetAndSetup,
 }) => {
   const [activeTab, setActiveTab] = useState<
     'shop' | 'receipt' | 'payments' | 'security' | 'backup' | 'maintenance'
   >('shop');
+
+  // Factory reset state
+  const [isFactoryResetModalOpen, setIsFactoryResetModalOpen] = useState(false);
+  const [isFactoryResetting, setIsFactoryResetting] = useState(false);
+  const [factoryResetConfirmText, setFactoryResetConfirmText] = useState('');
 
   // Shop Profile state
   const [shopName, setShopName] = useState(settings?.shop_name || '');
@@ -1168,6 +1176,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <span>Clean Business Database...</span>
             </Button>
           </div>
+
+          {/* Complete Factory Reset / Clear All Saved Data */}
+          {onResetAndSetup && (
+            <div className="bg-white p-6 rounded-xl border border-rose-300 shadow-xs space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-rose-950">
+                    Clear All Saved Data & Start Fresh Setup
+                  </h3>
+                  <p className="text-xs text-rose-800 mt-1">
+                    Permanently wipe all locally stored store data, books catalog, transactions, and staff credentials.
+                    Immediately launches the 4-step Setup Wizard to enter new bookshop info and credentials.
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                variant="danger"
+                onClick={() => {
+                  setFactoryResetConfirmText('');
+                  setIsFactoryResetModalOpen(true);
+                }}
+                className="min-h-[44px]"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Clear All Saved Data & Setup Fresh...</span>
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1255,6 +1295,69 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         onConfirm={handleConfirmRestore}
         onClose={() => setPendingRestoreFile(null)}
       />
+
+      {/* Factory Reset Modal with CONFIRM type check */}
+      <Modal
+        isOpen={isFactoryResetModalOpen}
+        onClose={() => setIsFactoryResetModalOpen(false)}
+        title="⚠️ WIPE ALL STORE DATA & RESTART SETUP"
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2">
+            <p className="font-bold text-sm text-rose-800">
+              This action permanently clears ALL local records and resets the app.
+            </p>
+            <p>
+              All book titles, receipts, expenses, audit logs, and custom administrator logins will be wiped.
+              The application will restart in initial Setup Wizard mode for new info configuration.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider">
+              Type <span className="font-mono text-rose-600 font-bold">RESET ALL DATA</span> to confirm:
+            </label>
+            <input
+              type="text"
+              value={factoryResetConfirmText}
+              onChange={(e) => setFactoryResetConfirmText(e.target.value)}
+              placeholder="RESET ALL DATA"
+              className="w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border-2 border-neutral-300 focus:outline-none focus:border-rose-500 font-mono font-bold"
+            />
+          </div>
+
+          <div className="pt-3 flex justify-end gap-3 border-t border-neutral-100">
+            <Button
+              variant="secondary"
+              onClick={() => setIsFactoryResetModalOpen(false)}
+              disabled={isFactoryResetting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={factoryResetConfirmText.trim() !== 'RESET ALL DATA' || isFactoryResetting}
+              loading={isFactoryResetting}
+              onClick={async () => {
+                if (!onResetAndSetup) return;
+                setIsFactoryResetting(true);
+                try {
+                  await onResetAndSetup();
+                  setIsFactoryResetModalOpen(false);
+                  toast.success('All data wiped. Ready for new setup.');
+                } catch (err: any) {
+                  toast.error(err.message || 'Failed to reset data');
+                } finally {
+                  setIsFactoryResetting(false);
+                }
+              }}
+            >
+              Confirm Full Reset
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

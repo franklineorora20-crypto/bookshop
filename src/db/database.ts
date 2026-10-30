@@ -2024,3 +2024,52 @@ export async function getAuditLogs(limit = 100): Promise<any[]> {
     [limit]
   );
 }
+
+// Full Factory Reset: clear all saved data and allow new info setup
+export async function resetDatabaseToFreshSetup(): Promise<void> {
+  if (typeof window !== 'undefined' && window.indexedDB) {
+    try {
+      const idb = await openIDB();
+      await new Promise<void>((resolve) => {
+        const tx = idb.transaction('sqlite', 'readwrite');
+        const store = tx.objectStore('sqlite');
+        const req = store.clear();
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+      });
+    } catch (e) {
+      console.warn('Error clearing IndexedDB:', e);
+    }
+  }
+
+  // Clear session storage and memory tokens
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.clear();
+  }
+
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('kitabupos_auth_session');
+  }
+
+  if (!SQL) {
+    if (typeof window !== 'undefined') {
+      SQL = await initSqlJs({ locateFile: (file) => `/${file}` });
+    } else {
+      SQL = await initSqlJs();
+    }
+  }
+
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch {
+      // ignore
+    }
+  }
+
+  const freshDb = new SQL.Database();
+  await initFreshDatabase(freshDb);
+  freshDb.run('PRAGMA foreign_keys = ON;');
+  dbInstance = freshDb;
+}
+

@@ -102,8 +102,12 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
           setError('Please create a secure password for your administrator account.');
           return false;
         }
-        if (adminPassword.length < 8) {
+        if (adminPassword.trim().length < 8) {
           setError('Administrator password must be at least 8 characters.');
+          return false;
+        }
+        if (adminPassword.trim() === 'admin123' || adminPassword.trim() === 'cashier123') {
+          setError('Please create a secure custom password rather than the default demo password.');
           return false;
         }
         if (adminPassword !== confirmPassword) {
@@ -404,7 +408,7 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
                     <input
                       type={showPassword ? 'text' : 'password'}
                       required
-                      placeholder="At least 6 characters"
+                      placeholder="At least 8 characters"
                       value={adminPassword}
                       onChange={(e) => setAdminPassword(e.target.value)}
                       className="w-full min-h-[44px] pl-3.5 pr-11 py-2 text-sm font-mono rounded-lg border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"

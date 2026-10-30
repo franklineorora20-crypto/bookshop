@@ -11,7 +11,7 @@ export async function getSeedQueries(): Promise<string[]> {
 
     `INSERT INTO users (id, username, full_name, role, password_hash, pin, is_active, created_at) VALUES 
       (1, 'admin', 'System Administrator', 'admin', '${adminHash}', NULL, 1, '${now}'),
-      (2, 'cashier', 'Bookshop Cashier', 'cashier', '${cashierHash}', NULL, 1, '${now}');`,
+      (2, 'cashier', 'Counter Cashier', 'cashier', '${cashierHash}', NULL, 1, '${now}');`,
 
     `INSERT INTO shop_settings (key, value) VALUES
       ('shop_name', ''),

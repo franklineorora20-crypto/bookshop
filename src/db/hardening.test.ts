@@ -24,6 +24,7 @@ import {
   cleanBusinessDatabase,
   restoreDatabaseBinary,
   getFinancialSummary,
+  resetDatabaseToFreshSetup,
   runExecute,
   runQueryOne,
 } from './database.ts';
@@ -80,11 +81,17 @@ test("A2 [TEST]: updateUser must update username (trimmed, case-insensitive uniq
   const adminUser = await runQueryOne<{ id: number }>('SELECT id FROM users WHERE id = 1;');
   assert.ok(adminUser);
 
-  // Update username with leading/trailing spaces
-  await updateUser(1, { username: '  chiefAdmin  ' }, 1, 'admin');
+  // Update username with leading/trailing spaces and setup password
+  const newPassHash = bcrypt.hashSync('MyNewAdminPass2026!', 10);
+  await updateUser(1, { username: '  chiefAdmin  ', password_hash: newPassHash }, 1, 'admin');
 
   const updated = await runQueryOne<{ username: string }>('SELECT username FROM users WHERE id = 1;');
   assert.equal(updated?.username, 'chiefAdmin', 'Username must be trimmed and updated');
+
+  // Verify that the wizard's chosen admin username and password can log in successfully
+  const loggedIn = await loginWithPassword('chiefadmin', 'MyNewAdminPass2026!');
+  assert.equal(loggedIn.id, 1);
+  assert.equal(loggedIn.username, 'chiefAdmin');
 
   // Case-insensitive duplicate check
   await assert.rejects(
@@ -96,7 +103,8 @@ test("A2 [TEST]: updateUser must update username (trimmed, case-insensitive uniq
   );
 
   // Reset back to admin for subsequent tests
-  await updateUser(1, { username: 'admin' }, 1, 'admin');
+  const defaultHash = bcrypt.hashSync('admin123', 10);
+  await updateUser(1, { username: 'admin', password_hash: defaultHash }, 1, 'admin');
 });
 
 test('A3 [TEST]: lockout and that getUsers/session expose no hash or PIN', async () => {
@@ -511,4 +519,24 @@ test('B1/B2 [TEST]: backup -> restore round trip preserves row counts; failed ve
     /confirmation/i,
     'Incorrect confirmation must abort clean'
   );
+});
+
+test('resetDatabaseToFreshSetup clears all saved data and resets is_setup_completed to false', async () => {
+  // First simulate completed setup
+  await updateShopSettings({ is_setup_completed: true, shop_name: 'Temp Shop' }, 1, 'admin');
+  const pre = await runQueryOne<{ value: string }>("SELECT value FROM shop_settings WHERE key = 'is_setup_completed';");
+  assert.equal(pre?.value, 'true');
+
+  // Perform full factory reset
+  await resetDatabaseToFreshSetup();
+
+  // Verify setup status is false and ready for new setup
+  const post = await runQueryOne<{ value: string }>("SELECT value FROM shop_settings WHERE key = 'is_setup_completed';");
+  assert.equal(post?.value, 'false');
+
+  // Verify business tables are completely clean
+  const books = await runQueryOne<{ count: number }>('SELECT COUNT(*) as count FROM books;');
+  assert.equal(Number(books?.count), 0);
+  const sales = await runQueryOne<{ count: number }>('SELECT COUNT(*) as count FROM sales;');
+  assert.equal(Number(sales?.count), 0);
 });
