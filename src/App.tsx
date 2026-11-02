@@ -336,7 +336,7 @@ export default function App() {
     },
     pos: {
       title: 'Point of Sale (POS)',
-      subtitle: 'Fast barcode scanning, shopping cart, cash & M-Pesa checkout',
+      subtitle: 'Fast catalog search, shopping cart, cash & M-Pesa checkout',
     },
     inventory: {
       title: 'Book Inventory & Stock Levels',

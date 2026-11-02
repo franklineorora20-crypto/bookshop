@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { BookOpen, AlertCircle, ArrowRight, Eye, EyeOff, ShieldCheck, Lock, Clock } from 'lucide-react';
+import { KitabuLogo } from '../common/KitabuLogo.tsx';
 import { loginWithPassword, isDefaultPassword, changeUserPassword, validatePassword } from '../../services/auth.ts';
 import type { User as UserType } from '../../types/index.ts';
 import { Button } from '../common/Button.tsx';
@@ -131,16 +132,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
         className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-neutral-200 overflow-hidden"
       >
         {/* Brand Header */}
-        <div className="p-6 text-center border-b border-neutral-100 bg-neutral-50/60">
-          <div className="w-12 h-12 mx-auto rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white shadow-xs mb-3">
-            <BookOpen className="w-6 h-6" />
-          </div>
+        <div className="p-6 text-center border-b border-neutral-100 bg-neutral-50/60 flex flex-col items-center">
+          <KitabuLogo variant="badge" size={48} className="mb-3" />
           <h1 className="text-xl font-bold tracking-tight text-neutral-900">KitabuPOS</h1>
           <p className="text-sm text-neutral-500 mt-1">
             Bookshop Point of Sale & Inventory
           </p>
           <div className="inline-flex items-center gap-1.5 text-xs text-neutral-500 mt-2 font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             <span>Online System</span>
           </div>
         </div>

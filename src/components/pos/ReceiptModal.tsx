@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Printer, X, CheckCircle2, ShoppingCart } from 'lucide-react';
+import { KitabuLogo } from '../common/KitabuLogo.tsx';
 import { Sale, ShopSettings } from '../../types/index.ts';
 import { formatKES, formatDateTime } from '../../utils/formatters.ts';
 
@@ -80,12 +81,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         {/* Printable Thermal Receipt Container */}
         <div className="p-6 overflow-y-auto flex-1 font-mono text-xs sm:text-sm text-neutral-900" ref={receiptRef}>
           <div className="text-center space-y-1 mb-4 pb-3 border-b border-dashed border-neutral-300">
-            {settings?.logo_url && (
+            {settings?.logo_url ? (
               <img
                 src={settings.logo_url}
                 alt="Store Logo"
                 className="max-h-12 mx-auto mb-2 object-contain filter grayscale"
               />
+            ) : (
+              <div className="flex justify-center mb-2">
+                <KitabuLogo colorMode="black" size={38} />
+              </div>
             )}
             <h2 className="text-base font-bold tracking-tight text-neutral-900">
               {settings?.shop_name || 'KITABU BOOKSHOP & STATIONERS'}

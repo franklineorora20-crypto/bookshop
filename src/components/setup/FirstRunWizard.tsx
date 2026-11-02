@@ -21,6 +21,7 @@ import type { ShopSettings, User } from '../../types/index.ts';
 import { updateShopSettings, updateUser, runQueryOne } from '../../db/database.ts';
 import { Button } from '../common/Button.tsx';
 import { Input } from '../common/Input.tsx';
+import { KitabuLogo } from '../common/KitabuLogo.tsx';
 
 interface FirstRunWizardProps {
   initialSettings: ShopSettings | null;
@@ -213,9 +214,7 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
         <div className="p-6 border-b border-neutral-100 bg-neutral-50/60">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-neutral-900 text-white flex items-center justify-center shadow-xs">
-                <BookOpen className="w-5 h-5" />
-              </div>
+              <KitabuLogo variant="badge" size={36} />
               <div>
                 <h1 className="font-bold text-base text-neutral-900">KitabuPOS Setup Wizard</h1>
                 <p className="text-xs text-neutral-500">
@@ -498,8 +497,8 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
                     {catalogChoice === 'empty' && <CheckCircle2 className="w-5 h-5 text-neutral-900" />}
                   </div>
                   <p className="text-xs text-neutral-600">
-                    Start with an empty database. You can scan barcodes directly at the counter, import
-                    a CSV inventory spreadsheet, or add titles one by one.
+                    Start with an empty database. You can search titles directly at the counter, import
+                    a CSV inventory spreadsheet, or add books one by one.
                   </p>
                 </button>
               </div>

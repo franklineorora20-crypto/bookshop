@@ -10,7 +10,6 @@ import {
   Edit2,
   AlertTriangle,
   Boxes,
-  Barcode,
   FolderSync,
   Trash2,
 } from 'lucide-react';
@@ -23,7 +22,6 @@ import { StockAdjustmentModal } from './StockAdjustmentModal.tsx';
 import { StockMovementsDrawer } from './StockMovementsDrawer.tsx';
 import { CSVImportModal } from './CSVImportModal.tsx';
 import { QuickAdjustModal } from './QuickAdjustModal.tsx';
-import { BarcodeLabelModal } from './BarcodeLabelModal.tsx';
 import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
 import { Button } from '../common/Button.tsx';
 import { toast } from 'sonner';
@@ -54,7 +52,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [quickAdjustBook, setQuickAdjustBook] = useState<Book | null>(null);
-  const [barcodeLabelBook, setBarcodeLabelBook] = useState<Book | null>(null);
   const [adjustingBook, setAdjustingBook] = useState<Book | null>(null);
   const [historyBook, setHistoryBook] = useState<{ id?: number; title?: string } | null>(null);
   const [isCSVImportOpen, setIsCSVImportOpen] = useState(false);
@@ -494,17 +491,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                             <SlidersHorizontal className="w-4 h-4" />
                           </button>
 
-                          {/* Print Barcode Label */}
-                          <button
-                            type="button"
-                            onClick={() => setBarcodeLabelBook(book)}
-                            className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 tactile-btn"
-                            title="Print Thermal Barcode Label"
-                            aria-label="Print barcode label"
-                          >
-                            <Barcode className="w-4 h-4" />
-                          </button>
-
                           {/* Stock Movement Ledger */}
                           <button
                             type="button"
@@ -569,16 +555,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           onSuccess={onRefreshData}
           userId={currentUser?.id || 1}
           userName={currentUser?.full_name || 'Admin'}
-        />
-      )}
-
-      {/* Barcode Label Modal */}
-      {barcodeLabelBook && (
-        <BarcodeLabelModal
-          book={barcodeLabelBook}
-          settings={settings}
-          isOpen={Boolean(barcodeLabelBook)}
-          onClose={() => setBarcodeLabelBook(null)}
         />
       )}
 

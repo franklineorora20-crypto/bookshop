@@ -15,8 +15,7 @@ export const ShortcutCheatSheetModal: React.FC<ShortcutCheatSheetModalProps> = (
     {
       title: 'Point of Sale (Cashier Counter)',
       shortcuts: [
-        { key: 'F2', desc: 'Focus barcode scanner / Jump to POS' },
-        { key: 'Exact Scan', desc: 'Auto-adds to cart instantly without pressing Enter' },
+        { key: 'F2', desc: 'Focus catalog search / Jump to POS' },
         { key: 'F4 or Space', desc: 'Open Checkout tender panel' },
         { key: 'Enter', desc: 'Confirm checkout / Start New Sale after receipt' },
         { key: 'Esc', desc: 'Cancel / Close modal / Clear search' },

@@ -43,6 +43,7 @@ import {
 import { formatDateTime, formatKES } from '../../utils/formatters.ts';
 import { Button } from '../common/Button.tsx';
 import { Input } from '../common/Input.tsx';
+import { KitabuLogo } from '../common/KitabuLogo.tsx';
 import { Modal } from '../common/Modal.tsx';
 import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
 import { StatusBadge } from '../common/StatusBadge.tsx';
@@ -659,9 +660,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {/* Paper Slip Preview */}
             <div className="mx-auto max-w-[340px] bg-neutral-50 p-6 rounded-xl border border-neutral-300 font-mono text-xs text-neutral-900 shadow-inner select-text">
               {/* Logo / Header */}
-              {logoUrl && (
+              {logoUrl ? (
                 <div className="flex justify-center mb-2">
                   <img src={logoUrl} alt="Logo" className="max-h-12 object-contain" />
+                </div>
+              ) : (
+                <div className="flex justify-center mb-2">
+                  <KitabuLogo colorMode="black" size={36} />
                 </div>
               )}
               <div className="text-center space-y-0.5">

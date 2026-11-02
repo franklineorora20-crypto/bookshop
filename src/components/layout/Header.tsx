@@ -5,7 +5,6 @@ interface HeaderProps {
   title: string;
   subtitle?: string;
   onNewSaleClick: () => void;
-  lastBackupTime?: string | null;
   onToggleMobileMenu?: () => void;
   onOpenCommandPalette?: () => void;
 }

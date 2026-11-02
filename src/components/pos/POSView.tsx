@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import {
   Search,
-  Barcode,
   ShoppingCart,
   Trash2,
   Plus,
@@ -629,12 +628,8 @@ export const POSView: React.FC<POSViewProps> = ({
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder={STRINGS.pos.scannerPlaceholder}
-                className="w-full pl-10 pr-20 py-2.5 bg-neutral-50 border border-neutral-300 rounded-xl text-sm text-neutral-900 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/15 min-h-[44px] transition-all shadow-xs"
+                className="w-full pl-10 pr-4 py-2.5 bg-neutral-50 border border-neutral-300 rounded-xl text-sm text-neutral-900 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/15 min-h-[44px] transition-all shadow-xs"
               />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-neutral-400 pointer-events-none">
-                <Barcode className="w-4 h-4" />
-                <span className="text-xs font-mono hidden sm:inline">Scanner</span>
-              </div>
             </form>
 
             {/* Quick shortcuts help button */}
@@ -859,7 +854,7 @@ export const POSView: React.FC<POSViewProps> = ({
               <ShoppingCart className="w-10 h-10 text-neutral-300 stroke-[1.5]" />
               <p className="text-sm font-medium text-neutral-600">Cart is empty</p>
               <p className="text-xs text-neutral-400 max-w-xs">
-                Scan barcode or select titles from catalog to begin sale
+                Search or select titles from the catalog to begin sale
               </p>
             </div>
           ) : (

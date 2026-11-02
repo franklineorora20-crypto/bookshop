@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { KitabuLogo } from '../common/KitabuLogo.tsx';
 import {
   BookOpen,
   LayoutDashboard,
@@ -158,9 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand Header */}
         <div className="h-14 px-3 border-b border-neutral-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-neutral-900 border border-neutral-700/80 flex items-center justify-center text-neutral-100 shadow-xs shrink-0">
-              <BookOpen className="w-4 h-4 text-emerald-400" />
-            </div>
+            <KitabuLogo variant="badge" size={32} />
             {(!isCollapsed || isMobileOpen) && (
               <div className="min-w-0">
                 <h1 className="font-semibold text-xs tracking-tight text-neutral-100 leading-tight truncate">
