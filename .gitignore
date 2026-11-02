@@ -8,3 +8,6 @@ coverage/
 .env*
 !build/icon.ico
 dev-dist/
+
+# Local AI Studio workspace files
+.aistudio/
