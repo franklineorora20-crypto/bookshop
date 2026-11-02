@@ -64,25 +64,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return (
       <div className="p-8 flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-3 border-neutral-900 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-medium text-neutral-500">Loading store metrics from local SQLite...</p>
+          <div className="w-6 h-6 border-2 border-neutral-900 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-medium text-neutral-400">Loading store metrics...</p>
         </div>
       </div>
     );
-  }
-
-  // Backup age calculation
-  let backupDaysAgo: number | null = null;
-  let isBackupOverdue = false;
-
-  if (metrics.lastBackupTime) {
-    const backupDate = new Date(metrics.lastBackupTime).getTime();
-    if (!isNaN(backupDate)) {
-      backupDaysAgo = Math.floor((Date.now() - backupDate) / (1000 * 60 * 60 * 24));
-      isBackupOverdue = backupDaysAgo >= 2;
-    }
-  } else {
-    isBackupOverdue = true;
   }
 
   const cashShare = metrics.todayRevenue > 0 ? (metrics.todayCashRevenue / metrics.todayRevenue) * 100 : 0;
@@ -90,53 +76,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Backup Freshness Alert Card (Turns RED after 2 days) */}
-      {isBackupOverdue ? (
-        <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-rose-100 text-rose-700 shrink-0">
-              <ShieldAlert className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-rose-950">
-                Database Backup Overdue! (
-                {backupDaysAgo === null ? 'Never backed up' : `${backupDaysAgo} days since last backup`})
-              </h3>
-              <p className="text-xs text-rose-800 mt-0.5">
-                KitabuPOS stores records locally on this laptop. Back up daily to a USB flash drive to prevent data loss.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('settings')}
-            className="px-4 py-2 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs shadow-xs tactile-btn min-h-[44px] flex items-center justify-center gap-1.5 shrink-0"
-          >
-            <HardDrive className="w-4 h-4" />
-            <span>Download USB Backup Now</span>
-          </button>
-        </div>
-      ) : (
-        <div className="p-3.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex items-center justify-between text-xs text-neutral-600">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>
-              Last SQLite Backup:{' '}
-              <strong className="text-neutral-900 font-semibold font-mono">
-                {backupDaysAgo === 0 ? 'Today' : `${backupDaysAgo} day(s) ago`} ({formatDateTime(metrics.lastBackupTime)})
-              </strong>
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('settings')}
-            className="text-xs text-neutral-700 hover:text-neutral-900 font-semibold underline underline-offset-2"
-          >
-            Manage Backups
-          </button>
-        </div>
-      )}
-
       {/* Primary Hero: Today's Sales & Cash vs M-Pesa Split */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Today Total Revenue Card */}
@@ -324,14 +263,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <td className="px-4 py-3 font-semibold text-neutral-900">{b.title}</td>
                     <td className="px-4 py-3 text-neutral-500">{b.category}</td>
                     <td className="px-4 py-3 text-center">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded font-mono font-bold text-xs ${
-                          b.quantity <= 0
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}
-                      >
-                        {b.quantity} copies
+                      <span className="inline-flex items-center gap-1.5 font-mono font-medium text-xs">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            b.quantity <= 0 ? 'bg-rose-500' : 'bg-amber-500'
+                          }`}
+                        />
+                        <span className={b.quantity <= 0 ? 'text-rose-700' : 'text-amber-700'}>
+                          {b.quantity} copies
+                        </span>
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center font-mono text-neutral-500">{b.reorder_level}</td>
@@ -342,7 +282,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <button
                         type="button"
                         onClick={() => onNavigate('purchases')}
-                        className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-xs tactile-btn"
+                        className="px-2.5 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-medium text-xs tactile-btn active:scale-[0.98]"
                       >
                         Order Stock
                       </button>
@@ -367,7 +307,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <button
             type="button"
             onClick={() => onNavigate('reports')}
-            className="text-xs font-bold text-neutral-800 hover:text-neutral-900 underline underline-offset-2"
+            className="text-xs font-semibold text-neutral-700 hover:text-neutral-900 underline underline-offset-2"
           >
             View Full Sales Ledger
           </button>
@@ -398,7 +338,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </td>
                     <td className="px-4 py-3 text-neutral-700">{s.customer_name || 'Walk-in'}</td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded text-xs font-semibold uppercase bg-neutral-100 text-neutral-700 font-mono">
+                      <span className="text-xs font-medium uppercase text-neutral-600 font-mono">
                         {s.payment_method}
                       </span>
                     </td>

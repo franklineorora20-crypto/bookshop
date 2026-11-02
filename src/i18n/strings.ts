@@ -7,9 +7,9 @@
 export const STRINGS = {
   app: {
     name: 'KitabuPOS',
-    tagline: 'Offline Bookshop Management & Point of Sale',
-    offlineStatus: '100% Offline • Local SQLite',
-    savedStatus: 'Saved to SQLite',
+    tagline: 'Bookshop Management & Point of Sale',
+    offlineStatus: 'Online System',
+    savedStatus: 'Saved',
     savingStatus: 'Saving...',
   },
   pos: {

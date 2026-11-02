@@ -181,7 +181,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           {/* Footer & Policy */}
           <div className="text-center space-y-1 pt-3 text-xs text-neutral-500">
             <p>{settings?.receipt_footer || 'Thank you for shopping with us! Knowledge is power.'}</p>
-            <p className="text-[11px] text-neutral-400">Powered by KitabuPOS Offline Bookshop System</p>
+            <p className="text-[11px] text-neutral-400">KitabuPOS Bookshop System</p>
           </div>
         </div>
 

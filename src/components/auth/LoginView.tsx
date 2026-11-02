@@ -137,11 +137,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
           </div>
           <h1 className="text-xl font-bold tracking-tight text-neutral-900">KitabuPOS</h1>
           <p className="text-sm text-neutral-500 mt-1">
-            Offline Bookshop Point of Sale & Inventory
+            Bookshop Point of Sale & Inventory
           </p>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-neutral-100 border border-neutral-200 text-xs text-neutral-700 mt-3 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>Local SQLite Database (Offline-Ready)</span>
+          <div className="inline-flex items-center gap-1.5 text-xs text-neutral-500 mt-2 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>Online System</span>
           </div>
         </div>
 

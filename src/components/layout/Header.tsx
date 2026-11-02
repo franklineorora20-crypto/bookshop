@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, HardDrive, Clock, Search, Command, Menu } from 'lucide-react';
-import { formatDateTime } from '../../utils/formatters.ts';
-import { PWAInstallButton } from '../common/PWAInstallButton.tsx';
+import { ShoppingCart, Clock, Search, Menu } from 'lucide-react';
 
 interface HeaderProps {
   title: string;
@@ -16,7 +14,6 @@ export const Header: React.FC<HeaderProps> = ({
   title,
   subtitle,
   onNewSaleClick,
-  lastBackupTime,
   onToggleMobileMenu,
   onOpenCommandPalette,
 }) => {
@@ -45,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   return (
-    <header className="h-14 bg-white/90 backdrop-blur-md border-b border-neutral-200/80 px-4 sm:px-6 flex items-center justify-between shadow-xs sticky top-0 z-20">
+    <header className="h-14 bg-white/90 backdrop-blur-md border-b border-neutral-200/70 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-20">
       <div className="flex items-center gap-3">
         {onToggleMobileMenu && (
           <button
@@ -57,29 +54,29 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <h2 className="text-sm sm:text-base font-semibold text-neutral-900 tracking-tight leading-tight truncate max-w-[200px] sm:max-w-none">
               {title}
             </h2>
-            <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-medium border border-emerald-200/70">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Saved</span>
-            </span>
+            <div className="hidden sm:inline-flex items-center gap-1.5 text-xs text-neutral-500 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] text-neutral-600">Online</span>
+            </div>
           </div>
           {subtitle && (
-            <p className="text-[11px] text-neutral-500 font-normal hidden sm:block truncate max-w-md">
+            <p className="text-[11px] text-neutral-400 font-normal hidden sm:block truncate max-w-md">
               {subtitle}
             </p>
           )}
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5 sm:gap-3">
+      <div className="flex items-center gap-2 sm:gap-2.5">
         {/* Quick Command Palette Button */}
         {onOpenCommandPalette && (
           <button
             onClick={onOpenCommandPalette}
-            className="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-neutral-200/80 bg-neutral-50/80 hover:bg-neutral-100/80 text-neutral-500 hover:text-neutral-800 text-xs transition-colors tactile-btn"
+            className="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-neutral-200/70 bg-neutral-50/60 hover:bg-neutral-100/80 text-neutral-500 hover:text-neutral-900 text-xs transition-all active:scale-[0.98]"
           >
             <Search className="w-3.5 h-3.5 text-neutral-400" />
             <span className="text-[11px] text-neutral-500">Quick search...</span>
@@ -89,37 +86,17 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Backup Status with Emil Kowalski clean dot indicator */}
-        <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg border border-neutral-200/70 bg-white text-xs text-neutral-600">
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              lastBackupTime ? 'bg-emerald-500 ring-2 ring-emerald-100' : 'bg-amber-500 ring-2 ring-amber-100'
-            }`}
-          />
-          <span className="text-[11px] text-neutral-500">Backup:</span>
-          {lastBackupTime ? (
-            <span className="text-[11px] font-medium text-neutral-800 tabular-nums">
-              {formatDateTime(lastBackupTime)}
-            </span>
-          ) : (
-            <span className="text-[11px] font-medium text-amber-600">Pending</span>
-          )}
-        </div>
-
         {/* Live Africa/Nairobi Clock with tabular numerals */}
-        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-neutral-200/70 bg-white text-xs text-neutral-600 tabular-nums">
+        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-neutral-200/70 bg-neutral-50/50 text-xs text-neutral-600 tabular-nums">
           <Clock className="w-3.5 h-3.5 text-neutral-400" />
           <span className="text-[11px] font-medium text-neutral-700">{currentTime || 'Nairobi Time'}</span>
-          <span className="text-[9px] font-mono font-medium text-neutral-400 ml-0.5">EAT</span>
+          <span className="text-[9px] font-mono text-neutral-400">EAT</span>
         </div>
-
-        {/* PWA Install Button for Mobile & Desktop Web Browsers */}
-        <PWAInstallButton variant="header" />
 
         {/* POS Fast Button - Emil Kowalski tactile button */}
         <button
           onClick={onNewSaleClick}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg font-medium text-xs shadow-xs tactile-btn"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 active:scale-[0.98] text-white rounded-lg font-medium text-xs shadow-xs transition-all"
         >
           <ShoppingCart className="w-3.5 h-3.5 text-neutral-300" />
           <span>New Sale</span>

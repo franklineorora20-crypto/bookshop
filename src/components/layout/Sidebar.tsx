@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { User } from '../../types/index.ts';
 import { hasPermission } from '../../services/auth.ts';
-import { PWAInstallButton } from '../common/PWAInstallButton.tsx';
 
 export type NavTab =
   | 'dashboard'
@@ -132,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'settings',
-      label: 'Settings & Backups',
+      label: 'Settings',
       icon: Settings,
       shortcut: 'Alt+T',
       permissionKey: 'CAN_EDIT_SETTINGS',
@@ -168,7 +167,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   KitabuPOS
                 </h1>
                 <span className="text-[10px] text-neutral-400 font-normal truncate block">
-                  Bookshop POS
+                  Bookshop Management
                 </span>
               </div>
             )}
@@ -198,19 +197,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
         </div>
-
-        {/* Offline Status */}
-        {(!isCollapsed || isMobileOpen) && (
-          <div className="px-3 pt-3 pb-1">
-            <div className="px-2.5 py-1.5 rounded-lg bg-neutral-900/60 border border-neutral-800/60 flex items-center justify-between text-[11px]">
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-                <span className="font-medium text-neutral-300">Offline SQLite</span>
-              </div>
-              <span className="font-mono text-[9px] text-neutral-400 uppercase">Local DB</span>
-            </div>
-          </div>
-        )}
 
         {/* Navigation Items */}
         <nav className="flex-1 px-2 py-2 space-y-1 overflow-y-auto">
@@ -285,22 +271,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* User Session Footer */}
         <div className="p-2.5 border-t border-neutral-800/80 bg-neutral-950 shrink-0">
           {(!isCollapsed || isMobileOpen) && (
-            <>
-              <PWAInstallButton variant="sidebar" className="mb-2" />
-              <div className="p-2 rounded-lg bg-neutral-900/70 border border-neutral-800/60 mb-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-neutral-200 truncate max-w-[120px]">
-                    {currentUser?.full_name || 'Staff User'}
-                  </span>
-                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-300 border border-neutral-700/50">
-                    {role}
-                  </span>
-                </div>
-                <p className="text-[10px] font-mono text-neutral-400 mt-0.5">
-                  @{currentUser?.username || 'user'}
-                </p>
+            <div className="p-2 rounded-lg bg-neutral-900/70 border border-neutral-800/60 mb-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-neutral-200 truncate max-w-[120px]">
+                  {currentUser?.full_name || 'Staff User'}
+                </span>
+                <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-300 border border-neutral-700/50">
+                  {role}
+                </span>
               </div>
-            </>
+              <p className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                @{currentUser?.username || 'user'}
+              </p>
+            </div>
           )}
 
           <div className={`grid ${isCollapsed && !isMobileOpen ? 'grid-cols-1 gap-1.5' : 'grid-cols-2 gap-1.5'}`}>

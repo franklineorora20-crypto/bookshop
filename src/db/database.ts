@@ -2160,7 +2160,7 @@ export async function exportDatabaseJson(
   return JSON.stringify(
     {
       exportedAt: new Date().toISOString(),
-      system: 'KitabuPOS Offline Bookshop Management System',
+      system: 'KitabuPOS Bookshop Management System',
       data: {
         settings,
         users: userList,

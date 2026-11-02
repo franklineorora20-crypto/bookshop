@@ -63,7 +63,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onResetAndSetup,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'shop' | 'receipt' | 'payments' | 'security' | 'backup' | 'maintenance'
+    'shop' | 'receipt' | 'payments' | 'security' | 'maintenance'
   >('shop');
 
   // Factory reset state
@@ -447,7 +447,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           { id: 'receipt', label: 'Receipt Customization', icon: Receipt },
           { id: 'payments', label: 'Payments & M-Pesa', icon: Smartphone },
           { id: 'security', label: 'Security & Audits', icon: ShieldCheck },
-          { id: 'backup', label: 'Database Backup', icon: Database },
           { id: 'maintenance', label: 'Data & Maintenance', icon: Wrench },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -455,7 +454,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`min-h-[40px] px-4 py-2 rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${
+              className={`min-h-[40px] px-4 py-2 rounded-md transition-all flex items-center gap-2 whitespace-nowrap tactile-btn active:scale-[0.98] ${
                 activeTab === tab.id
                   ? 'bg-white text-neutral-900 shadow-xs font-semibold'
                   : 'text-neutral-600 hover:text-neutral-900'
@@ -746,7 +745,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {/* Footer */}
               <div className="text-center text-[10px] text-neutral-600 space-y-1">
                 <p className="italic">{receiptFooter}</p>
-                <p className="font-semibold text-neutral-800">Software: KitabuPOS Offline</p>
+                <p className="font-semibold text-neutral-800">KitabuPOS Bookshop System</p>
               </div>
             </div>
           </div>
@@ -890,242 +889,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* TAB 5: Database Backup & Integrity */}
-      {activeTab === 'backup' && (
-        <div className="space-y-6 max-w-4xl">
-          {/* Last Backup Card */}
-          <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-700">
-                <Database className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-base text-neutral-900">Database Backup Status</h4>
-                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold uppercase bg-neutral-100 text-neutral-700">
-                    {backupSchedule} Schedule
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  Last verified backup:{' '}
-                  <strong className="text-neutral-800">
-                    {lastBackup ? formatDateTime(lastBackup) : 'Never recorded'}
-                  </strong>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="primary"
-                onClick={handleRunVerifiedBackupNow}
-                loading={isAutoBackingUp}
-                className="min-h-[44px]"
-              >
-                <Database className="w-4 h-4" />
-                <span>Run Verified Backup Now</span>
-              </Button>
-            </div>
-          </div>
-
-          {/* Automatic Backup Configuration & Retention */}
-          <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-4">
-            <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-neutral-700" />
-              <span>Automated Backup Schedule & Safe Retention</span>
-            </h4>
-            <p className="text-xs text-neutral-600">
-              KitabuPOS writes verified SQLite snapshots with automated rotation (keeps 14 daily + 8 weekly backups).
-              Backups trigger automatically on app startup if overdue, hourly during operation, and upon app quit.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
-                  Backup Frequency Schedule
-                </label>
-                <select
-                  value={backupSchedule}
-                  onChange={(e) => setBackupSchedule(e.target.value as any)}
-                  className="w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200 bg-white focus:border-neutral-900"
-                >
-                  <option value="daily">Daily (Overdue warning after 2 days; keeps 14 daily)</option>
-                  <option value="weekly">Weekly (Overdue warning after 8 days; keeps 8 weekly)</option>
-                  <option value="manual">Manual (Backups taken on demand by administrator)</option>
-                </select>
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  A persistent banner appears across the till if a backup has not completed within the threshold.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
-                  Primary Storage Location
-                </label>
-                <input
-                  type="text"
-                  disabled
-                  value={electronPaths?.backupDir || 'UserData/Backups (App Local Storage)'}
-                  className="w-full min-h-[44px] px-3.5 py-2 text-xs rounded-lg border border-neutral-200 bg-neutral-100 text-neutral-600 font-mono"
-                />
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  Protected local directory preserved during app updates.
-                </p>
-              </div>
-            </div>
-
-            {/* Optional Secondary Backup Folder (e.g. Flash Drive) */}
-            <div className="pt-3 border-t border-neutral-100">
-              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
-                Secondary Backup Destination Folder (e.g., USB Flash Drive / External Drive)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="e.g. D:\KitabuPOS_Backups or /media/usb"
-                  value={backupFolderPath}
-                  onChange={(e) => setBackupFolderPath(e.target.value)}
-                  className="flex-1 min-h-[44px] px-3.5 py-2 text-sm font-mono rounded-lg border border-neutral-200 bg-white focus:border-neutral-900"
-                />
-                {(window as any).electronAPI?.selectBackupFolder && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={handleSelectSecondaryFolder}
-                    className="shrink-0 min-h-[44px]"
-                  >
-                    <span>Browse...</span>
-                  </Button>
-                )}
-              </div>
-              <p className="text-[11px] text-neutral-500 mt-1">
-                When specified, every automatic and manual backup is also mirrored to this folder for offsite recovery.
-              </p>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <Button
-                variant="primary"
-                onClick={() => handleSaveAllSettings()}
-                loading={isSaving}
-                className="min-h-[40px] text-xs"
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                <span>Save Backup Preferences</span>
-              </Button>
-            </div>
-          </div>
-
-          {/* Backup & Export Options */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
-              <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
-                <HardDrive className="w-4 h-4 text-neutral-600" />
-                <span>Direct SQLite Database Download (.sqlite)</span>
-              </h4>
-              <p className="text-xs text-neutral-500">
-                Exact binary snapshot of all SQLite tables, indexes, and transactions. Can be opened in
-                DB Browser for SQLite or restored into another KitabuPOS terminal.
-              </p>
-              <Button
-                variant="secondary"
-                onClick={handleDownloadBinaryBackup}
-                className="w-full min-h-[44px]"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export SQLite File</span>
-              </Button>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
-              <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-neutral-600" />
-                <span>Human-Readable JSON Export (.json)</span>
-              </h4>
-              <p className="text-xs text-neutral-500">
-                JSON export of all books, sales, inventory movements, and customers for easy external
-                reporting or data migration into spreadsheets.
-              </p>
-              <Button
-                variant="secondary"
-                onClick={handleCreateJsonBackup}
-                className="w-full min-h-[44px]"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export JSON Data</span>
-              </Button>
-            </div>
-          </div>
-
-          {/* Restore Database */}
-          <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
-            <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
-              <Upload className="w-4 h-4 text-neutral-600" />
-              <span>Restore Database from Backup File</span>
-            </h4>
-            <p className="text-xs text-neutral-500">
-              Restore a previous <code className="font-mono bg-neutral-100 px-1 py-0.5 rounded">.sqlite</code> backup.
-              An emergency pre-restore safety copy is saved in your browser storage automatically before replacing records.
-            </p>
-            <div className="flex items-center gap-3 pt-1">
-              <label className="min-h-[44px] px-4 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-xs transition-colors">
-                <Upload className="w-4 h-4" />
-                <span>Choose .sqlite Backup File</span>
-                <input
-                  type="file"
-                  accept=".sqlite,.db"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setPendingRestoreFile(file);
-                      e.target.value = '';
-                    }
-                  }}
-                />
-              </label>
-            </div>
-          </div>
-
-          {/* Integrity Check */}
-          <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-neutral-600" />
-                  <span>SQLite PRAGMA Integrity Check</span>
-                </h4>
-                <p className="text-xs text-neutral-500">
-                  Verify internal B-tree health, foreign key consistency, and index validity.
-                </p>
-              </div>
-              <Button
-                variant="secondary"
-                onClick={handleRunIntegrityCheck}
-                loading={isCheckingIntegrity}
-                className="min-h-[44px]"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>Run Integrity Check</span>
-              </Button>
-            </div>
-
-            {integrityStatus && (
-              <div
-                className={`p-3.5 rounded-lg border text-xs font-mono ${
-                  integrityStatus.ok
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                    : 'bg-rose-50 border-rose-200 text-rose-900'
-                }`}
-              >
-                Result: {integrityStatus.message}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 6: Data & Maintenance */}
+      {/* TAB 5: Data & Maintenance */}
       {activeTab === 'maintenance' && (
         <div className="space-y-6 max-w-3xl">
           {/* First Run Wizard Launch */}

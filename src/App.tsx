@@ -16,11 +16,7 @@ import { SettingsView } from './components/settings/SettingsView.tsx';
 import { LoginView } from './components/auth/LoginView.tsx';
 import { LockScreen } from './components/auth/LockScreen.tsx';
 import { ReceiptModal } from './components/pos/ReceiptModal.tsx';
-import { OfflineIndicator } from './components/common/OfflineIndicator.tsx';
-import { PWAInstallPrompt } from './components/common/PWAInstallPrompt.tsx';
-import { BackupBanner } from './components/common/BackupBanner.tsx';
-import { PersistenceAlertBanner } from './components/common/PersistenceAlertBanner.tsx';
-import { DatabaseRecoveryScreen } from './components/common/DatabaseRecoveryScreen.tsx';
+import { Toaster } from 'sonner';
 import { Book, Sale, ShopSettings, User } from './types/index.ts';
 import {
   getDatabase,
@@ -272,17 +268,27 @@ export default function App() {
     }
   };
 
-  // If database corruption or recovery required, display Recovery Screen immediately!
+  // If database corruption or recovery required, display sleek prompt
   if (recoveryError) {
     return (
-      <DatabaseRecoveryScreen
-        errorMessage={recoveryError.message}
-        corruptData={recoveryError.corruptData}
-        onRecovered={() => {
-          setRecoveryError(null);
-          refreshAllData();
-        }}
-      />
+      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-neutral-200 p-6 text-center space-y-4">
+          <h2 className="text-lg font-bold text-neutral-900">Database Storage Reset Required</h2>
+          <p className="text-xs text-neutral-600">
+            A storage discrepancy occurred on this operating device. Click below to re-initialize your local database safely.
+          </p>
+          <button
+            onClick={async () => {
+              await resetDatabaseToFreshSetup();
+              setRecoveryError(null);
+              refreshAllData();
+            }}
+            className="w-full py-2.5 px-4 bg-neutral-900 hover:bg-neutral-800 text-white font-medium rounded-lg text-sm transition-all active:scale-[0.98]"
+          >
+            Re-initialize Local Database
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -290,7 +296,6 @@ export default function App() {
   if (!loading && shopSettings && !shopSettings.is_setup_completed) {
     return (
       <div className="min-h-screen flex flex-col">
-        <PersistenceAlertBanner onBackupNow={handleBackupNow} />
         <FirstRunWizard
           initialSettings={shopSettings}
           onComplete={(adminUser, updatedSettings) => {
@@ -310,7 +315,6 @@ export default function App() {
   if (!currentUser) {
     return (
       <div className="min-h-screen flex flex-col">
-        <PersistenceAlertBanner onBackupNow={handleBackupNow} />
         <LoginView
           onLoginSuccess={(user) => {
             setCurrentUser(user);
@@ -328,7 +332,7 @@ export default function App() {
   const titles: { [key in NavTab]: { title: string; subtitle: string } } = {
     dashboard: {
       title: 'Store Dashboard',
-      subtitle: `${shopSettings?.shop_name || 'Bookshop System'} • Local SQLite Operations`,
+      subtitle: `${shopSettings?.shop_name || 'Bookshop System'} • Operations & Analytics`,
     },
     pos: {
       title: 'Point of Sale (POS)',
@@ -355,8 +359,8 @@ export default function App() {
       subtitle: 'Administrator and cashier permission controls',
     },
     settings: {
-      title: 'Settings, Backup & Data Integrity',
-      subtitle: 'Shop details, receipt footer, SQLite integrity checks, and backups',
+      title: 'System & Shop Settings',
+      subtitle: 'Shop identity, receipt templates, M-Pesa till, and security',
     },
   };
 
@@ -364,8 +368,7 @@ export default function App() {
     (dashboardMetrics?.lowStockCount || 0) + (dashboardMetrics?.outOfStockCount || 0);
 
   return (
-    <div className="flex flex-col h-screen bg-slate-100 overflow-hidden font-sans text-slate-800">
-      <PersistenceAlertBanner onBackupNow={handleBackupNow} />
+    <div className="flex flex-col h-screen bg-neutral-100/70 overflow-hidden font-sans text-neutral-900">
       <div className="flex flex-1 overflow-hidden">
         {/* Persistent Left Sidebar */}
         <Sidebar
@@ -375,32 +378,23 @@ export default function App() {
             setIsMobileMenuOpen(false);
           }}
           currentUser={currentUser}
-        onLock={handleLock}
-        onLogout={handleLogout}
-        lowStockCount={lowStockCount}
-        isMobileOpen={isMobileMenuOpen}
-        onCloseMobile={() => setIsMobileMenuOpen(false)}
-      />
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <Header
-          title={titles[activeTab].title}
-          subtitle={titles[activeTab].subtitle}
-          onNewSaleClick={() => setActiveTab('pos')}
-          lastBackupTime={lastBackupTime}
-          onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
+          onLock={handleLock}
+          onLogout={handleLogout}
+          lowStockCount={lowStockCount}
+          isMobileOpen={isMobileMenuOpen}
+          onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
 
-        {/* Persistent Overdue Backup Alert Banner */}
-        <BackupBanner
-          lastBackupTime={lastBackupTime}
-          backupSchedule={shopSettings?.backup_schedule || 'daily'}
-          onBackupNow={handleBackupNow}
-          onOpenSettings={() => setActiveTab('settings')}
-        />
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col h-screen overflow-hidden">
+          <Header
+            title={titles[activeTab].title}
+            subtitle={titles[activeTab].subtitle}
+            onNewSaleClick={() => setActiveTab('pos')}
+            onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
+          />
 
-        <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto">
           {activeTab === 'dashboard' && (
             <DashboardView
               metrics={dashboardMetrics}
@@ -503,11 +497,8 @@ export default function App() {
         />
       )}
 
-      {/* Network Connectivity & Offline Indicator */}
-      <OfflineIndicator />
-
-      {/* Custom In-App PWA Install Prompt */}
-      <PWAInstallPrompt />
+      {/* Sonner Toast Notifications (Emil Kowalski Design) */}
+      <Toaster position="bottom-right" richColors={false} closeButton theme="light" />
     </div>
   );
 }
