@@ -38,9 +38,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
   const [isRecovering, setIsRecovering] = useState(false);
   const [replacementRecoveryCode, setReplacementRecoveryCode] = useState<string | null>(null);
 
-  // Reset all data modal state
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
 
   // Rate limiting failed attempts
   const [failedAttempts, setFailedAttempts] = useState(0);
@@ -383,15 +380,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
           >
             Forgot Administrator Password?
           </button>
-          {onResetAndSetup && (
-            <button
-              type="button"
-              onClick={() => setIsResetModalOpen(true)}
-              className="text-xs text-neutral-500 hover:text-neutral-900 underline font-medium transition-colors cursor-pointer"
-            >
-              Clear all saved data & start fresh setup
-            </button>
-          )}
         </div>
           </>
         )}
@@ -483,52 +471,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
         </form>
       </Modal>
 
-      {/* Factory Reset Confirmation Modal */}
-      <Modal
-        isOpen={isResetModalOpen}
-        onClose={() => !isResetting && setIsResetModalOpen(false)}
-        title="⚠️ Clear All Saved Data"
-        maxWidth="md"
-      >
-        <div className="space-y-4">
-          <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-950 text-sm space-y-2">
-            <div className="font-semibold text-rose-900">Start new bookshop info setup?</div>
-            <p className="text-xs text-rose-800 leading-relaxed">
-              This action will clear all locally stored records, receipts, and user accounts from this browser.
-              KitabuPOS will restart the initial Setup Wizard so you can enter your genuine shop identity, payment numbers, and new administrator credentials from scratch.
-            </p>
-          </div>
 
-          <div className="pt-2 flex justify-end gap-3 border-t border-neutral-100">
-            <Button
-              variant="secondary"
-              onClick={() => setIsResetModalOpen(false)}
-              disabled={isResetting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              loading={isResetting}
-              onClick={async () => {
-                if (!onResetAndSetup) return;
-                setIsResetting(true);
-                try {
-                  await onResetAndSetup();
-                  setIsResetModalOpen(false);
-                  toast.success('Database cleared. Starting setup wizard.');
-                } catch (e: any) {
-                  toast.error(e.message || 'Failed to clear database');
-                } finally {
-                  setIsResetting(false);
-                }
-              }}
-            >
-              Wipe Data & Start Setup
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 };
