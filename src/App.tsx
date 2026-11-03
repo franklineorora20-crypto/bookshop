@@ -318,9 +318,9 @@ export default function App() {
     return (
       <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-neutral-200 p-6 text-center space-y-4">
-          <h2 className="text-lg font-bold text-neutral-900">Database Storage Reset Required</h2>
+          <h2 className="text-lg font-bold text-neutral-900">Store Storage Reset Needed</h2>
           <p className="text-xs text-neutral-600">
-            A storage discrepancy occurred on this operating device. Click below to re-initialize your local database safely.
+            A storage issue occurred on this computer. Click below to safely reset and start fresh.
           </p>
           <button
             onClick={async () => {
@@ -330,7 +330,7 @@ export default function App() {
             }}
             className="w-full py-2.5 px-4 bg-neutral-900 hover:bg-neutral-800 text-white font-medium rounded-lg text-sm transition-all active:scale-[0.98]"
           >
-            Re-initialize Local Database
+            Reset Store Data Safely
           </button>
         </div>
       </div>
@@ -417,7 +417,7 @@ export default function App() {
     },
     settings: {
       title: 'System & Shop Settings',
-      subtitle: 'Shop identity, receipt templates, M-Pesa till, and security',
+      subtitle: 'Store profile, receipt setup, M-Pesa till, and PC storage',
     },
   };
 

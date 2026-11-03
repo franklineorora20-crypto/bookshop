@@ -501,8 +501,8 @@ export const POSView: React.FC<POSViewProps> = ({
       clearCart();
       await onRefreshData();
     } catch (err: any) {
-      setPaymentError(err.message || 'Failed to finalize sale in database.');
-      toast.error('Sale failed: ' + (err.message || 'Database error'));
+      setPaymentError(err.message || 'Failed to finalize sale.');
+      toast.error('Sale failed: ' + (err.message || 'Error processing transaction'));
     } finally {
       setIsSubmitting(false);
     }

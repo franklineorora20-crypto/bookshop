@@ -186,10 +186,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
           <p className="text-sm text-neutral-500 mt-1">
             Bookshop Point of Sale & Inventory
           </p>
-          <div className="inline-flex items-center gap-1.5 text-xs text-neutral-500 mt-2 font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Offline-ready system</span>
-          </div>
         </div>
 
         {/* Login Form */}

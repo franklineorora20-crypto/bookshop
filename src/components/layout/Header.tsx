@@ -57,10 +57,6 @@ export const Header: React.FC<HeaderProps> = ({
             <h2 className="text-sm sm:text-base font-semibold text-neutral-900 tracking-tight leading-tight truncate max-w-[200px] sm:max-w-none">
               {title}
             </h2>
-            <div className="hidden sm:inline-flex items-center gap-1.5 text-xs text-neutral-500 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] text-neutral-600">Online</span>
-            </div>
           </div>
           {subtitle && (
             <p className="text-[11px] text-neutral-400 font-normal hidden sm:block truncate max-w-md">

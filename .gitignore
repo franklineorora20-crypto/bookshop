@@ -9,5 +9,5 @@ coverage/
 !build/icon.ico
 dev-dist/
 
-# Local AI Studio workspace files
+# Local development files
 .aistudio/

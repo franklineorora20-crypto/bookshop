@@ -1,5 +1,12 @@
 {
   "name": "kitabupos",
+  "description": "Complete local PC bookshop management and point-of-sale system for Kenyan academic bookshops.",
+  "author": "Franklin Eorora <franklineorora20@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/franklineorora20-crypto/bookshop.git"
+  },
+  "homepage": "https://github.com/franklineorora20-crypto/bookshop",
   "private": true,
   "version": "1.0.0",
   "type": "module",

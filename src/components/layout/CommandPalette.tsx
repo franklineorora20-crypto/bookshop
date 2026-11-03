@@ -110,10 +110,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   matchingBooks.forEach((b) => combinedItems.push({ type: 'book', data: b }));
 
   if (onTriggerBackup) {
-    if (!query.trim() || 'backup database'.includes(query.toLowerCase())) {
+    if (!query.trim() || 'save store copy'.includes(query.toLowerCase()) || 'backup'.includes(query.toLowerCase())) {
       combinedItems.push({
         type: 'action',
-        label: 'Create Instant SQLite Backup',
+        label: 'Save Store Copy to Computer',
         action: onTriggerBackup,
         icon: HardDrive,
       });

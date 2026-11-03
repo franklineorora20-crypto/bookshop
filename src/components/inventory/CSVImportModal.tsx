@@ -114,7 +114,7 @@ export const CSVImportModal: React.FC<CSVImportModalProps> = ({
       }
 
       await onSuccess();
-      toast.success(`Successfully imported ${imported} titles into SQLite database!`);
+      toast.success(`Successfully imported ${imported} titles into your store catalog!`);
       setImportSummary(`Successfully imported ${imported} books into local inventory.`);
       setTimeout(() => {
         onClose();

@@ -53,10 +53,10 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         >
           <div className="flex items-center gap-2">
             <Download className="w-4 h-4" />
-            <span>Install Desktop/Mobile App</span>
+            <span>Install App on PC</span>
           </div>
           <span className="text-[10px] uppercase font-mono px-1 rounded bg-neutral-800 text-neutral-300">
-            PWA
+            App
           </span>
         </button>
       )}
@@ -107,7 +107,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                   3
                 </span>
                 <p>
-                  Tap <strong className="text-neutral-900">Add</strong> in the top right. KitabuPOS will launch offline in its own standalone app window!
+                  Tap <strong className="text-neutral-900">Add</strong> in the top right. KitabuPOS will launch in its own standalone app window!
                 </p>
               </div>
             </div>

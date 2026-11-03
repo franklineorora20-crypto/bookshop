@@ -8,7 +8,7 @@ export const STRINGS = {
   app: {
     name: 'KitabuPOS',
     tagline: 'Bookshop Management & Point of Sale',
-    offlineStatus: 'Online System',
+    storageStatus: 'Local Storage',
     savedStatus: 'Saved',
     savingStatus: 'Saving...',
   },

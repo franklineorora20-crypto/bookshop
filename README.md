@@ -1,115 +1,126 @@
-# KitabuPOS - Offline Bookshop Management System
+# KitabuPOS — Bookshop Management & Point of Sale System
 
-A production-grade, offline-first desktop management system engineered specifically for academic bookshops and stationers in Kenya.
+A modern, fast, and reliable retail management system designed specifically for academic bookshops, stationers, and uniform stores in Kenya. KitabuPOS operates 100% locally on your computer with zero reliance on cloud subscriptions or internet connectivity.
 
----
-
-## 1. System Overview & Offline-First Architecture
-
-KitabuPOS is designed to operate completely without internet connectivity, external APIs, cloud subscriptions, or remote CDNs:
-
-- **Local SQLite Database**: All books, categories, sales, stock movement audit trails, publisher purchases, operating expenses, and system settings reside in an offline SQLite database.
-- **Data Storage Location**: Currently persisted in browser-isolated IndexedDB storage within the application renderer, architected for future migration to main-process SQLite. Automated backups are stored natively on the machine at `<userData>/Backups`.
-- **Kenyan Shilling (KES) & Nairobi Time**: Formatted natively for Kenyan commercial standards with Africa/Nairobi timezone conventions (`EAT`, `UTC+3`).
-- **M-Pesa Buy Goods & Paybill Ready**: Built-in support for cash, split payment, card, and strict 10-character alphanumeric M-Pesa transaction reference recording with duplicate detection.
-- **Hardware Integration**: High-speed USB barcode scanner keyboard wedge input, 80mm/58mm thermal receipt printing, and offline CSV export.
-- **Role-Based Security**: Administrator, Store Manager, and Cashier roles protected with bcrypt password hashing (cost factor 10), hashed PINs, and inactivity auto-lock. Cashiers cannot see wholesale cost prices or store profit margins.
-- **Brute-Force & Lockout Protection**: Consecutive failed login or PIN unlock attempts trigger a 5-minute lockout after 5 failures, doubling upon repeated violations, persisted in the database.
-- **Overdue Backup Banner**: A persistent warning banner alerts staff when the last verified database backup is older than 2 days (on daily schedule) or 8 days (on weekly schedule).
+**Developed & Maintained by:** [Franklin Eorora](https://github.com/franklineorora20-crypto)  
+**Repository:** [franklineorora20-crypto/bookshop](https://github.com/franklineorora20-crypto/bookshop)  
+**Contact:** franklineorora20@gmail.com  
 
 ---
 
-## 2. Core Modules
+## 🌟 Key Features
 
-### A. Point of Sale (POS)
-- Instant barcode scanner search and real-time stock balance lookup.
-- Fast cart management with line item discounts, cashier discount ceiling limits (default: 10%), and cash tender calculations.
-- Strict payment methods: **Cash**, **M-Pesa** (validated 10-character alphanumeric code e.g. `SKL98X5Z21`), and **Split Payments**.
-- Server-authoritative calculation: all totals, line discounts, and taxes are recalculated and verified in SQLite transactions before committing.
-- Thermal 80mm/58mm printable receipt with shop branding, tax PIN/Till, item breakdown, and return policy.
-- Immediate database persistence flush after completed sales before displaying receipt.
+### 💻 100% Local Computer Storage
+- **Fully Self-Contained**: All book inventory, daily sales, customer receipts, and expense vouchers are stored directly on your computer's local hard drive.
+- **No Cloud Dependencies**: Works uninterrupted during network downtimes or power outages.
+- **Data Privacy**: Your customer transactions and wholesale pricing stay strictly confidential on your machine.
 
-### B. Book Inventory & Stock Movements
-- Complete cataloging: Title, Author, Publisher, Category (KCSE Set Books, CBC Junior School, Primary, Dictionaries, Stationery), Edition, Purchase Price, Selling Price, and Reorder Levels.
-- Real-time stock movement ledger tracking every transaction (`sale`, `sale_void`, `purchase`, `damage`, `adjustment`) with staff attribution.
-- CSV import with preview, column mapping, and row-level error validation.
-- CSV inventory export for audits with automatic cost-price masking for cashier accounts.
+### 🛒 High-Speed Counter Point of Sale (POS)
+- **Fast Keyboard & Barcode Search**: Press `F2` from anywhere in the app to jump directly into the sales counter. Search by title, author, publisher, ISBN, or scan physical barcodes.
+- **Tender Options**:
+  - **Cash**: Instant calculation of amount tendered and change due.
+  - **Safaricom M-Pesa**: Direct Buy Goods Till and Paybill support with automatic 10-character code verification (e.g., `SKL98X5Z21`) and duplicate entry protection.
+  - **Split Tender**: Combine cash and M-Pesa on the same transaction.
+- **Printable Thermal Receipts**: Formatted for standard 80mm and 58mm thermal receipt printers with your bookshop name, till number, itemized totals, and exchange policies.
+- **Cart Parking**: Park an active customer's basket while another customer is attended to.
 
-### C. Purchases & Suppliers
-- Manage publishers (Longhorn, Oxford University Press, KLB, Moran, EAEP, etc.).
-- Goods Received Notes (GRN) to update stock atomically on physical delivery.
-- Supplier purchase invoices and outstanding balance tracking.
+### 📚 Kenyan Curriculum Catalog & Inventory Management
+- **Pre-configured CBC & KCSE Catalog**: Built-in support for Kenya Literature Bureau (KLB), Longhorn Publishers, Moran, East African Educational Publishers (EAEP), and Oxford University Press.
+- **Categories**: CBC Grade 1–9, KCSE Set Books & Guides, Past Papers, Dictionaries, Exercise Books, and General Stationery.
+- **Stock Movement Ledger**: Full audit trail recording every inventory change (`sale`, `restock`, `adjustment`, `damage`, `sale_void`).
+- **CSV Catalog Import & Export**: Download sample CSV templates, import hundreds of book titles at once, or export inventory for stock taking.
+- **Low Stock Alerts**: Configurable reorder threshold alerts directly on the dashboard.
 
-### D. Store Operating Expenses
-- Categorized operational expense recording (Rent, KPLC electricity tokens, salaries & casual labor, transport, packaging bags, county licenses).
-- Real-time deduction from gross profit for accurate Net Operating Profit calculations.
+### 📦 Publisher Purchases & Goods Received Notes (GRN)
+- Record bulk book shipments directly from publishers and distributors.
+- Automatically updates on-hand quantities and calculates invoice cost totals.
 
-### E. Financial Reports & Analytics
-- **Profit & Loss (P&L)**: Real-time Operating Revenue vs. Cost of Goods Sold (COGS) vs. Store Expenses. All revenue and profit metrics strictly exclude sales tax (VAT).
-- Cash Received metrics strictly exclude customer change given.
-- Split payments are automatically broken down into cash, M-Pesa, and card buckets.
-- All date-filtered queries use Nairobi timezone (`date(created_at, '+3 hours')`).
-- Detailed sales ledger, top-selling titles, and voided transaction audit log.
+### 📊 Financial & Profitability Reports
+- **Real-Time Profit & Loss (P&L)**: Live calculations of gross revenue, Cost of Goods Sold (COGS), operating expenses, and net profit margins.
+- **Operating Expense Ledger**: Log store expenses including shop rent, KPLC electricity tokens, staff wages, and carrier bags.
+- **Sales Breakdown**: Visual split between cash in till and M-Pesa collections.
+- **Kenya Timezone Alignment**: Financial ledgers and daily cuts follow Africa/Nairobi timezone conventions (`EAT`, `UTC+3`).
 
-### F. Backup & Data Integrity
-- Automated verified SQLite backups written to `<userData>/Backups` with rotation keeping 14 daily and 8 weekly backup files.
-- Optional secondary backup directory (e.g., an external USB drive) configured in Settings.
-- Automatic backup triggers on app startup if overdue, hourly during operation, and on app quit.
-- Compulsory SQLite `PRAGMA integrity_check` verification before any database restore, cleanup, or schema migration; destructive steps abort if verification fails.
-- Database reset ("Clean Business Database") requires typed confirmation `DELETE ALL STORE DATA`, retains staff accounts and configuration, and appends an immutable `SYSTEM_CLEAN` entry to `audit_logs`.
+### 🔒 Staff Security & Role-Based Access Control
+- **Account Tiers**: Administrator and Cashier roles. Cashiers are restricted to the POS till and cannot view wholesale cost prices or business profit margins.
+- **Password Security**: Strong bcrypt password hashing and optional 4–6 digit quick PINs for unlocking counter screens.
+- **Automatic Inactivity Lock**: Locks the register screen after a configurable period of inactivity to prevent unauthorized sales.
+- **Emergency Recovery Code**: Self-service administrator recovery code generated during first-time setup for secure password resets.
 
----
-
-## 3. Packaging into Windows `.exe` Installer
-
-KitabuPOS includes Electron and Electron-Builder configurations targeted for Windows x64:
-
-### Prerequisites:
-- Node.js 20+ and npm
-
-### Build Commands:
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Run automated test suite
-npm test
-
-# 3. Typecheck and lint
-npm run lint
-
-# 4. Generate Windows NSIS Installer (.exe)
-npm run build:win
-```
-
-The resulting setup executable (`KitabuPOS-Setup-${version}.exe`) will be generated inside the `release/` directory.
-
-### Windows Application Data Paths:
-- **Application Binary**: Installed under `C:\Program Files\KitabuPOS`.
-- **Database & Backups**: Stored in the user's application data directory (`%APPDATA%\KitabuPOS\Backups`).
+### 💾 Simple PC Backup & Restore
+- **Save Store Copy (.pos file)**: Single-click export to save a dated file of all store records to your Documents folder or an external USB flash drive.
+- **Restore Store Records**: Effortlessly load store records from a saved file with automatic pre-restore safety snapshots.
 
 ---
 
-## 4. Initial Setup & Staff Authentication
+## 🚀 Getting Started
 
-KitabuPOS enforces initial configuration through the First-Run Setup Wizard upon first launch:
+### Prerequisites
+- [Node.js](https://nodejs.org/) (version 20 or higher)
+- [npm](https://www.npmjs.com/) (version 10 or higher)
 
-1. **System Administrator Account**: The user defines the administrator username, full name, secure password (minimum 8 characters), and optional 4-6 digit quick PIN during the first-run wizard.
-2. **Staff User Management**: Additional Store Manager and Cashier accounts can be created within **Staff Accounts & Roles** (`Alt + U`) by an Administrator.
-3. **No Hardcoded Passwords**: There are no default public credentials in the codebase. All credentials are protected using bcrypt (cost 10).
-4. **Session Security**: Session storage contains only `{ userId, role, name, locked }`. Passwords and PIN hashes are never exposed to the client or session storage.
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/franklineorora20-crypto/bookshop.git
+   cd bookshop
+   ```
+
+2. **Install project dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Start the local application:**
+   ```bash
+   npm run dev
+   ```
+   Open your browser and navigate to `http://localhost:3000`.
+
+4. **Run the automated test suite:**
+   ```bash
+   npm test
+   ```
+   Verifies all 29 business calculation, CSV parsing, local storage, and security hardening tests.
+
+5. **Build for production:**
+   ```bash
+   npm run build
+   ```
 
 ---
 
-## 5. Development & Testing
+## 🛠️ Technology Architecture
 
-```bash
-# Run local dev server
-npm run dev
+- **Frontend Framework**: [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
+- **Bundler & Dev Server**: [Vite 6](https://vitejs.dev/)
+- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
+- **Local Storage Engine**: Client-side SQLite ([sql.js](https://sql.js.org/) WASM engine) persisted securely via IndexedDB
+- **Icons & UI**: [Lucide React](https://lucide.dev/), [Sonner](https://sonner.emilkowal.ski/), [Motion](https://motion.dev/)
+- **Typography**: Inter & JetBrains Mono (locally bundled via Fontsource)
+- **Audio Feedback**: Web Audio API synthesizer for barcode scanning beeps
 
-# Run automated unit and integration tests
-npm test
+---
 
-# Typecheck codebase
-npm run lint
-```
+## ⌨️ Keyboard Shortcuts Reference
+
+| Shortcut | Action |
+|---|---|
+| `F2` | Open Point of Sale (POS) Counter |
+| `Alt + D` | Store Dashboard |
+| `Alt + I` | Inventory & Books Catalog |
+| `Alt + S` | Publisher Purchases & GRN |
+| `Alt + E` | Store Operating Expenses |
+| `Alt + R` | Financial Reports & P&L |
+| `Alt + U` | Staff User Accounts |
+| `Alt + T` | System & Store Settings |
+| `Ctrl + K` / `Cmd + K` | Quick Command Palette |
+| `Enter` | Complete Tender & Finalize Sale |
+
+---
+
+## 📄 License & Attribution
+
+Created and maintained by **Franklin Eorora**.  
+Available for commercial and academic bookshop deployments in Kenya and East Africa.

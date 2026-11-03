@@ -921,7 +921,7 @@ export async function restoreDatabaseBinary(
   if (!isVerified) {
     return {
       ok: false,
-      message: 'Restoration aborted: The provided backup file failed the SQLite integrity check or is corrupted.',
+      message: 'Restoration cancelled: The selected file is corrupted or not a valid KitabuPOS store file.',
     };
   }
 
@@ -930,7 +930,7 @@ export async function restoreDatabaseBinary(
   const tables = candidateDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('books', 'sales', 'users');");
   if (!tables[0] || tables[0].values.length < 3) {
     candidateDb.close();
-    return { ok: false, message: 'Restoration aborted: Missing required KitabuPOS tables (books, sales, users).' };
+    return { ok: false, message: 'Restoration cancelled: The selected file is missing store records.' };
   }
   try {
     await migrateDatabase(candidateDb, false);
@@ -938,7 +938,7 @@ export async function restoreDatabaseBinary(
     candidateDb.close();
     return {
       ok: false,
-      message: `Restoration aborted: The backup could not be safely upgraded for this version (${error instanceof Error ? error.message : 'migration failed'}).`,
+      message: `Restoration cancelled: The file could not be safely loaded (${error instanceof Error ? error.message : 'incompatible format'}).`,
     };
   }
 

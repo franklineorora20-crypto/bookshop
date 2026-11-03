@@ -271,46 +271,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleRunVerifiedBackupNow = async () => {
-    setIsAutoBackingUp(true);
-    try {
-      const binary = await exportDatabaseBinary();
-      const integrity = await checkDatabaseIntegrity();
-      if (!integrity.ok) {
-        throw new Error(`Database integrity verification failed: ${integrity.message}`);
-      }
-
-      const electronAPI = (window as any).electronAPI;
-      if (electronAPI?.writeAutoBackup) {
-        const res = await electronAPI.writeAutoBackup(binary, backupFolderPath.trim(), backupSchedule);
-        if (!res.success) {
-          throw new Error(res.error || 'Failed to save auto backup');
-        }
-        toast.success(`Verified SQLite backup saved to ${res.filePath}`);
-      } else {
-        const d = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `KitabuPOS_Backup_${d}.sqlite`;
-        const blob = new Blob([binary as any], { type: 'application/x-sqlite3' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        toast.success('Verified SQLite backup downloaded successfully!');
-      }
-
-      const ts = await getLastBackupTimestamp();
-      setLastBackup(ts);
-      await onRefreshData();
-    } catch (err: any) {
-      toast.error(`Backup failed: ${err.message}`);
-    } finally {
-      setIsAutoBackingUp(false);
-    }
-  };
+  const [isSavingCopy, setIsSavingCopy] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -327,31 +289,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleRunIntegrityCheck = async () => {
-    setIsCheckingIntegrity(true);
-    try {
-      const res = await checkDatabaseIntegrity();
-      setIntegrityStatus(res);
-      if (res.ok) {
-        toast.success('SQLite integrity check passed with zero errors!');
-      } else {
-        toast.error(`Database issue detected: ${res.message}`);
-      }
-    } catch (e: any) {
-      setIntegrityStatus({ ok: false, message: e.message });
-      toast.error(e.message);
-    } finally {
-      setIsCheckingIntegrity(false);
-    }
-  };
-
-  const handleDownloadBinaryBackup = async () => {
+  const handleSaveStoreCopy = async () => {
+    setIsSavingCopy(true);
     try {
       const binary = await exportDatabaseBinary();
-      const d = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `KitabuPOS_Backup_${d}.sqlite`;
-
-      const blob = new Blob([binary as any], { type: 'application/x-sqlite3' });
+      const integrity = await checkDatabaseIntegrity();
+      if (!integrity.ok) {
+        throw new Error('Could not verify store records.');
+      }
+      const d = new Date().toISOString().slice(0, 10);
+      const filename = `KitabuPOS_Store_Records_${d}.pos`;
+      const blob = new Blob([binary as any], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -363,32 +311,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       const ts = await getLastBackupTimestamp();
       setLastBackup(ts);
-      toast.success('SQLite database backup file downloaded successfully!');
+      toast.success('Store records copy saved to your computer!');
+      await onRefreshData();
     } catch (err: any) {
-      toast.error(`Backup failed: ${err.message}`);
+      toast.error(`Save copy failed: ${err.message}`);
+    } finally {
+      setIsSavingCopy(false);
     }
   };
 
-  const handleCreateJsonBackup = async () => {
-    try {
-      const jsonStr = await exportDatabaseJson();
-      const d = new Date().toISOString().slice(0, 10);
-      const filename = `KitabuPOS_Export_${d}.json`;
-
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      toast.success('Full shop JSON export downloaded!');
-    } catch (err: any) {
-      toast.error(`JSON export failed: ${err.message}`);
-    }
+  const handleSelectFileToRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPendingRestoreFile(file);
+    e.target.value = '';
   };
 
   const handleConfirmRestore = async () => {
@@ -463,7 +399,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div>
           <h2 className="text-lg font-bold text-neutral-900">System & Shop Settings</h2>
           <p className="text-sm text-neutral-500">
-            Configure business identity, receipts, M-Pesa till, database backups, and security.
+            Configure store identity, receipts, M-Pesa till, local computer storage, and security.
           </p>
         </div>
 
@@ -487,7 +423,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           { id: 'receipt', label: 'Receipt Customization', icon: Receipt },
           { id: 'payments', label: 'Payments & M-Pesa', icon: Smartphone },
           { id: 'security', label: 'Security & Audits', icon: ShieldCheck },
-          { id: 'maintenance', label: 'Data & Maintenance', icon: Wrench },
+          { id: 'maintenance', label: 'PC Storage & Records', icon: HardDrive },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
@@ -1029,89 +965,168 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* TAB 5: Data & Maintenance */}
+      {/* TAB 5: PC Storage & Records */}
       {activeTab === 'maintenance' && (
         <div className="space-y-6 max-w-3xl">
-          {/* First Run Wizard Launch */}
-          {onOpenWizard && (
-            <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-sm text-neutral-900">Setup Wizard</h4>
-                <p className="text-xs text-neutral-500">
-                  Re-run the initial 4-step quick configuration wizard to adjust store identity or import catalog.
-                </p>
+          {/* Card 1: Local PC Storage Status */}
+          <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                  <HardDrive className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-neutral-900">
+                    Saved on This Computer
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
+                    All book titles, sales transactions, customer receipts, and settings are automatically saved directly onto this computer's storage. No internet connection or external servers are used.
+                  </p>
+                </div>
               </div>
-              <Button
-                variant="secondary"
-                onClick={onOpenWizard}
-                className="min-h-[44px]"
-              >
-                <span>Launch Wizard</span>
-              </Button>
+              <span className="shrink-0 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold flex items-center gap-1.5 border border-emerald-200/60">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Storage Active</span>
+              </span>
             </div>
-          )}
+          </div>
 
-          {/* Clean Database Section */}
-          <div className="bg-white p-6 rounded-xl border border-rose-200 shadow-xs space-y-4">
+          {/* Card 2: Save Copy to Computer */}
+          <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-4">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                <Trash2 className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <Download className="w-5 h-5" />
               </div>
-              <div>
-                <h3 className="font-bold text-base text-rose-900">
-                  Clean Business Database (Reset Store Data)
+              <div className="flex-1">
+                <h3 className="font-bold text-base text-neutral-900">
+                  Save Store Copy to Computer
                 </h3>
-                <p className="text-xs text-rose-700 mt-1">
-                  Permanently wipe transactional demo data, sales receipts, customer debts, and stock movements.
-                  Your staff logins and shop configuration will be safely kept.
+                <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
+                  Downloads a complete copy of all your store records. Keep this file in your Documents folder or copy it to a USB flash drive for safe keeping.
                 </p>
+                {lastBackup && (
+                  <p className="text-[11px] text-neutral-400 mt-2 font-mono">
+                    Last copy saved: {formatDateTime(lastBackup)}
+                  </p>
+                )}
               </div>
             </div>
 
             <Button
-              variant="danger"
-              onClick={() => {
-                setCleanConfirmText('');
-                setIsCleanModalOpen(true);
-              }}
+              variant="primary"
+              onClick={handleSaveStoreCopy}
+              loading={isSavingCopy}
               className="min-h-[44px]"
             >
-              <Trash2 className="w-4 h-4" />
-              <span>Clean Business Database...</span>
+              <Download className="w-4 h-4" />
+              <span>Save Store Records (.pos file)</span>
             </Button>
           </div>
 
-          {/* Complete Factory Reset / Clear All Saved Data */}
-          {onResetAndSetup && (
-            <div className="bg-white p-6 rounded-xl border border-rose-300 shadow-xs space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
-                  <RotateCcw className="w-5 h-5" />
-                </div>
+          {/* Card 3: Open / Restore Store File */}
+          <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                <Upload className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-base text-neutral-900">
+                  Open / Restore Store File
+                </h3>
+                <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
+                  Load a previously saved store file (.pos or .sqlite) from your computer or flash drive to restore all your books and receipts.
+                </p>
+              </div>
+            </div>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".pos,.sqlite,.db"
+              onChange={handleSelectFileToRestore}
+              className="hidden"
+            />
+
+            <Button
+              variant="secondary"
+              onClick={() => fileInputRef.current?.click()}
+              className="min-h-[44px]"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Select Store File to Restore...</span>
+            </Button>
+          </div>
+
+          {/* Card 4: Store Management (Wizard & Clean) */}
+          <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-5">
+            <h3 className="font-bold text-base text-neutral-900 pb-2 border-b border-neutral-100 flex items-center gap-2">
+              <Wrench className="w-4 h-4 text-neutral-600" />
+              <span>Store Setup & Data Maintenance</span>
+            </h3>
+
+            {/* Launch Setup Wizard */}
+            {onOpenWizard && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg bg-neutral-50 border border-neutral-200/70">
                 <div>
-                  <h3 className="font-bold text-base text-rose-950">
-                    Clear All Saved Data & Start Fresh Setup
-                  </h3>
-                  <p className="text-xs text-rose-800 mt-1">
-                    Permanently wipe all locally stored store data, books catalog, transactions, and staff credentials.
-                    Immediately launches the 4-step Setup Wizard to enter new bookshop info and credentials.
+                  <h4 className="font-bold text-sm text-neutral-900">Setup Wizard</h4>
+                  <p className="text-xs text-neutral-500">
+                    Re-run the initial 4-step wizard to update your shop name, contact number, or till numbers.
                   </p>
                 </div>
+                <Button
+                  variant="secondary"
+                  onClick={onOpenWizard}
+                  className="min-h-[40px] shrink-0"
+                >
+                  <span>Launch Wizard</span>
+                </Button>
               </div>
+            )}
 
+            {/* Clear Sales Transactions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg bg-amber-50/60 border border-amber-200/70">
+              <div>
+                <h4 className="font-bold text-sm text-amber-950">Clear Past Sales History</h4>
+                <p className="text-xs text-amber-800">
+                  Clears past sales orders and receipts for a clean accounting term while keeping all your books, prices, and staff accounts.
+                </p>
+              </div>
               <Button
                 variant="danger"
                 onClick={() => {
-                  setFactoryResetConfirmText('');
-                  setIsFactoryResetModalOpen(true);
+                  setCleanConfirmText('');
+                  setIsCleanModalOpen(true);
                 }}
-                className="min-h-[44px]"
+                className="min-h-[40px] shrink-0"
               >
-                <RotateCcw className="w-4 h-4" />
-                <span>Clear All Saved Data & Setup Fresh...</span>
+                <Trash2 className="w-4 h-4" />
+                <span>Clear Sales...</span>
               </Button>
             </div>
-          )}
+
+            {/* Start Fresh Setup */}
+            {onResetAndSetup && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg bg-rose-50/60 border border-rose-200/70">
+                <div>
+                  <h4 className="font-bold text-sm text-rose-950">Clear Everything & Start Fresh</h4>
+                  <p className="text-xs text-rose-800">
+                    Wipes all local records from this computer and restarts the initial Setup Wizard from scratch.
+                  </p>
+                </div>
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    setFactoryResetConfirmText('');
+                    setIsFactoryResetModalOpen(true);
+                  }}
+                  className="min-h-[40px] shrink-0"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Start Fresh Setup...</span>
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1119,39 +1134,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <Modal
         isOpen={isCleanModalOpen}
         onClose={() => setIsCleanModalOpen(false)}
-        title="⚠️ DANGER: Clean Business Database"
+        title="⚠️ Clear Past Store Transactions"
         maxWidth="lg"
       >
         <div className="space-y-4">
           <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2">
             <p className="font-bold text-sm text-rose-800">
-              This action permanently clears active business records.
+              This action clears historical sales and order records.
             </p>
             <p>
-              An automated emergency safety backup will be verified in your browser storage before
-              wiping.
+              An automated safety copy will be preserved in your computer storage before clearing.
             </p>
           </div>
 
           <div className="space-y-2 text-xs">
             <div className="font-bold text-neutral-800 uppercase tracking-wider">
-              What WILL BE permanently wiped:
+              What WILL BE cleared:
             </div>
             <ul className="list-disc pl-5 space-y-1 text-neutral-600">
               <li>All sales transactions, receipts, and order items</li>
               <li>All supplier purchase orders and delivery notes</li>
               <li>All shop expense records and cash drawer payouts</li>
-              <li>All book titles, inventory stock levels, and movement history</li>
-              <li>All supplier contacts and customer balance accounts</li>
+              <li>All stock movement history</li>
             </ul>
 
             <div className="font-bold text-neutral-800 uppercase tracking-wider pt-2">
               What WILL BE safely preserved:
             </div>
             <ul className="list-disc pl-5 space-y-1 text-emerald-800 font-medium">
+              <li>Book catalog, ISBNs, titles, and selling prices</li>
               <li>System administrator and cashier login accounts</li>
               <li>Shop profile name, till number, and receipt settings</li>
-              <li>Automated safety backup in browser storage</li>
+              <li>Automated safety copy in computer storage</li>
             </ul>
           </div>
 
@@ -1183,18 +1197,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               loading={isCleaning}
               onClick={handleExecuteCleanData}
             >
-              Permanently Clear Business Data
+              Permanently Clear Data
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Confirm Database Restore Modal */}
+      {/* Confirm Store Records Restore Modal */}
       <ConfirmDialog
         isOpen={!!pendingRestoreFile}
-        title="Confirm Database Restore"
-        message={`Restoring "${pendingRestoreFile?.name}" will replace current inventory, sales, and accounts with records from this backup file. An automated pre-restore backup will be taken first.`}
-        confirmLabel="Restore Database Now"
+        title="Restore Store Records"
+        message={`Restoring "${pendingRestoreFile?.name}" will load all books, sales, and settings saved in this file. A safety copy of your current data is saved automatically first.`}
+        confirmLabel="Load Store Records"
         variant="danger"
         onConfirm={handleConfirmRestore}
         onClose={() => setPendingRestoreFile(null)}
