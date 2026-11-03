@@ -7,6 +7,7 @@ export interface SessionData {
   role: UserRole;
   name: string;
   locked: boolean;
+  authVersion?: number;
 }
 
 // Deprecated alias for backwards compatibility
@@ -143,8 +144,9 @@ export async function loginWithPassword(username: string, password: string): Pro
     is_active: number;
     created_at: string;
     last_login?: string;
+    auth_version: number;
   }>(
-    'SELECT id, username, full_name, role, password_hash, is_active, created_at, last_login FROM users WHERE LOWER(TRIM(username)) = LOWER(?) AND is_active = 1;',
+    'SELECT id, username, full_name, role, password_hash, is_active, created_at, last_login, auth_version FROM users WHERE LOWER(TRIM(username)) = LOWER(?) AND is_active = 1;',
     [trimmedUsername]
   );
 
@@ -171,6 +173,7 @@ export async function loginWithPassword(username: string, password: string): Pro
     role: userRow.role,
     name: userRow.full_name,
     locked: false,
+    authVersion: userRow.auth_version,
   });
 
   return {
@@ -181,6 +184,7 @@ export async function loginWithPassword(username: string, password: string): Pro
     is_active: userRow.is_active,
     created_at: userRow.created_at,
     last_login: now,
+    auth_version: userRow.auth_version,
   };
 }
 
@@ -195,8 +199,9 @@ export async function unlockWithPinOrPassword(userId: number, credential: string
     role: UserRole;
     password_hash: string;
     pin: string | null;
+    auth_version: number;
   }>(
-    'SELECT id, username, full_name, role, password_hash, pin FROM users WHERE id = ? AND is_active = 1;',
+    'SELECT id, username, full_name, role, password_hash, pin, auth_version FROM users WHERE id = ? AND is_active = 1;',
     [userId]
   );
   if (!userRow) return false;
@@ -230,6 +235,7 @@ export async function unlockWithPinOrPassword(userId: number, credential: string
       role: userRow.role,
       name: userRow.full_name,
       locked: false,
+      authVersion: userRow.auth_version,
     });
     return true;
   } else {
@@ -269,6 +275,7 @@ export function getStoredSession(): SessionData | null {
         role: parsed.role,
         name: parsed.name || '',
         locked: Boolean(parsed.locked),
+        authVersion: Number(parsed.authVersion ?? 0),
       };
     }
     // Backward compatibility if old object was stored
@@ -278,6 +285,7 @@ export function getStoredSession(): SessionData | null {
         role: parsed.user.role,
         name: parsed.user.full_name || parsed.user.username || '',
         locked: Boolean(parsed.isLocked),
+        authVersion: 0,
       };
     }
     return null;
@@ -298,6 +306,7 @@ export function saveSession(session: SessionData | null | { user: User; isLocked
         role: session.role,
         name: session.name,
         locked: session.locked,
+        authVersion: session.authVersion ?? 0,
       };
     } else {
       const u = (session as any).user;
@@ -306,9 +315,10 @@ export function saveSession(session: SessionData | null | { user: User; isLocked
         role: u.role,
         name: u.full_name || u.username,
         locked: Boolean((session as any).isLocked),
+        authVersion: u.auth_version ?? 0,
       };
     }
-    // Strictly sessionStorage holds only {userId, role, name, locked}
+    // Session storage holds identifiers and an auth version, never credentials.
     storage.setItem(
       SESSION_STORAGE_KEY,
       JSON.stringify({
@@ -316,20 +326,80 @@ export function saveSession(session: SessionData | null | { user: User; isLocked
         role: payload.role,
         name: payload.name,
         locked: payload.locked,
+        authVersion: payload.authVersion,
       })
     );
   }
+}
+
+export async function validateStoredSession(): Promise<SessionData | null> {
+  const session = getStoredSession();
+  if (!session) return null;
+  const user = await runQueryOne<{
+    role: UserRole;
+    full_name: string;
+    is_active: number;
+    auth_version: number;
+  }>(
+    'SELECT role, full_name, is_active, auth_version FROM users WHERE id = ?;',
+    [session.userId]
+  );
+  if (
+    !user ||
+    user.is_active !== 1 ||
+    user.role !== session.role ||
+    user.auth_version !== session.authVersion
+  ) {
+    saveSession(null);
+    return null;
+  }
+  return { ...session, name: user.full_name, authVersion: user.auth_version };
+}
+
+export function notifySessionsInvalidated(): void {
+  saveSession(null);
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const channel = new BroadcastChannel('kitabupos-auth');
+      channel.postMessage({ type: 'sessions-invalidated' });
+      channel.close();
+    } catch (error) {
+      console.error('Could not notify other windows that login sessions were invalidated:', error);
+    }
+  }
+}
+
+export function subscribeSessionsInvalidated(callback: () => void): () => void {
+  if (typeof BroadcastChannel === 'undefined') return () => {};
+  const channel = new BroadcastChannel('kitabupos-auth');
+  const onMessage = (event: MessageEvent) => {
+    if (event.data?.type === 'sessions-invalidated') callback();
+  };
+  channel.addEventListener('message', onMessage);
+  return () => {
+    channel.removeEventListener('message', onMessage);
+    channel.close();
+  };
 }
 
 export function isDefaultPassword(password: string): boolean {
   return password === 'admin123' || password === 'cashier123';
 }
 
-export async function changeUserPassword(userId: number, newPassword: string): Promise<void> {
+export async function changeUserPassword(userId: number, newPassword: string): Promise<number> {
   const check = validatePassword(newPassword);
   if (!check.valid) {
     throw new Error(check.error);
   }
   const newHash = bcrypt.hashSync(newPassword.trim(), 10);
-  await runExecute('UPDATE users SET password_hash = ? WHERE id = ?;', [newHash, userId]);
+  await runExecute(
+    'UPDATE users SET password_hash = ?, auth_version = auth_version + 1 WHERE id = ?;',
+    [newHash, userId]
+  );
+  const updatedUser = await runQueryOne<{ auth_version: number }>(
+    'SELECT auth_version FROM users WHERE id = ?;',
+    [userId]
+  );
+  if (!updatedUser) throw new Error('Password was updated but the user session version could not be verified.');
+  return updatedUser.auth_version;
 }

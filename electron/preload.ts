@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectBackupFolder: () => ipcRenderer.invoke('backup:select-folder'),
   saveBackupFile: (defaultName: string, binaryData: Uint8Array | number[]) =>
     ipcRenderer.invoke('backup:save-file', defaultName, binaryData),
+  createEmergencyBackup: (binaryData: Uint8Array | number[]) =>
+    ipcRenderer.invoke('backup:create-emergency', binaryData),
   writeAutoBackup: (
     binaryData: Uint8Array | number[],
     secondFolder?: string,

@@ -16,9 +16,16 @@ import {
   Eye,
   EyeOff,
   Sparkles,
+  Copy,
 } from 'lucide-react';
 import type { ShopSettings, User } from '../../types/index.ts';
-import { updateShopSettings, updateUser, runQueryOne } from '../../db/database.ts';
+import {
+  updateShopSettings,
+  updateUser,
+  runQueryOne,
+  generateAdministratorRecoveryCode,
+  configureInitialAdministratorRecoveryCode,
+} from '../../db/database.ts';
 import { Button } from '../common/Button.tsx';
 import { Input } from '../common/Input.tsx';
 import { KitabuLogo } from '../common/KitabuLogo.tsx';
@@ -68,6 +75,8 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
   // UI state
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+  const [recoveryCodeAcknowledged, setRecoveryCodeAcknowledged] = useState(false);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -139,19 +148,36 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
     return true;
   };
 
-  const handleNext = () => {
-    if (validateStep(currentStep)) {
+  const handleNext = async () => {
+    if (!validateStep(currentStep)) return;
+    setIsSubmitting(true);
+    try {
+      if (currentStep === 3 && !isRerun) {
+        const code = generateAdministratorRecoveryCode();
+        await configureInitialAdministratorRecoveryCode(code);
+        setRecoveryCode(code);
+        setRecoveryCodeAcknowledged(false);
+      }
       setCurrentStep((prev) => Math.min(prev + 1, totalSteps));
+    } catch (err: any) {
+      setError(err.message || 'Could not securely prepare administrator recovery.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleBack = () => {
+    if (currentStep === 4 && recoveryCodeAcknowledged) return;
     setError(null);
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   };
 
   const handleFinishSetup = async () => {
     if (!validateStep(currentStep)) return;
+    if (!isRerun && !recoveryCodeAcknowledged) {
+      setError('Save and acknowledge the administrator recovery code before finishing setup.');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -510,6 +536,63 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
                   open the Point of Sale register.
                 </span>
               </div>
+
+              {!isRerun && (
+                <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
+                  <div>
+                    <h4 className="font-bold text-sm text-amber-950">Administrator Recovery Code</h4>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-900">
+                      This offline code is the only self-service way to reset the administrator password. Store it separately from this computer. KitabuPOS will not show it again after you confirm saving it.
+                    </p>
+                  </div>
+                  {recoveryCodeAcknowledged ? (
+                    <p role="status" className="text-sm font-semibold text-emerald-800">
+                      Recovery code saved and acknowledged.
+                    </p>
+                  ) : recoveryCode ? (
+                    <>
+                      <div className="rounded-lg border border-amber-200 bg-white p-3 text-center">
+                        <code className="break-all font-mono text-lg font-bold tracking-wider text-neutral-900">
+                          {recoveryCode}
+                        </code>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(recoveryCode);
+                              setError(null);
+                            } catch {
+                              setError('Copy was unavailable. Select and copy the recovery code manually.');
+                            }
+                          }}
+                        >
+                          <Copy className="w-4 h-4" /> Copy code
+                        </Button>
+                        <Button type="button" variant="secondary" onClick={() => window.print()}>
+                          Print code
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          onClick={() => {
+                            setRecoveryCode(null);
+                            setRecoveryCodeAcknowledged(true);
+                          }}
+                        >
+                          I saved this code
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-rose-700">
+                      The code is not available. Return to the administrator step and continue to generate a new one.
+                    </p>
+                  )}
+                </section>
+              )}
             </div>
           )}
         </div>
@@ -517,7 +600,7 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
         {/* Wizard Footer Navigation */}
         <div className="p-6 border-t border-neutral-100 bg-neutral-50/60 flex items-center justify-between">
           <div>
-            {currentStep > 1 && (
+            {currentStep > 1 && !(currentStep === 4 && recoveryCodeAcknowledged) && (
               <Button
                 variant="secondary"
                 onClick={handleBack}
@@ -535,6 +618,8 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({
               <Button
                 variant="primary"
                 onClick={handleNext}
+                disabled={isSubmitting}
+                loading={isSubmitting}
                 className="min-h-[44px]"
               >
                 <span>Continue</span>

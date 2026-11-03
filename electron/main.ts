@@ -10,6 +10,11 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const userDataOverride = process.argv.find((argument) => argument.startsWith('--user-data-dir='));
+if (userDataOverride) {
+  app.setPath('userData', path.resolve(userDataOverride.slice('--user-data-dir='.length)));
+}
+
 // C1: Single Instance Lock - Quit immediately if another instance is already running
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -316,6 +321,39 @@ ipcMain.handle('backup:quit-backup-save', async (event, rawBinary: Uint8Array | 
     }
   } catch {}
   app.exit(0);
+});
+
+ipcMain.handle('backup:create-emergency', async (event, rawBinary: Uint8Array | number[]) => {
+  validateIpcSender(event);
+  let emergencyPath: string | null = null;
+  try {
+    const buffer = Buffer.isBuffer(rawBinary) ? rawBinary : Buffer.from(rawBinary as any);
+    if (!verifySqliteHeader(buffer)) {
+      return { success: false, error: 'Database binary failed SQLite header validation.' };
+    }
+
+    emergencyPath = path.join(
+      backupDirectory,
+      `kitabupos_emergency_pre_recovery_${Date.now()}.sqlite`
+    );
+    fs.writeFileSync(emergencyPath, buffer, { flag: 'wx' });
+    const savedCopy = fs.readFileSync(emergencyPath);
+    if (!verifySqliteHeader(savedCopy) || !savedCopy.equals(buffer)) {
+      fs.unlinkSync(emergencyPath);
+      return { success: false, error: 'Emergency backup read-back verification failed.' };
+    }
+    return { success: true, filePath: emergencyPath };
+  } catch (error: any) {
+    if (emergencyPath && fs.existsSync(emergencyPath)) {
+      try {
+        fs.unlinkSync(emergencyPath);
+      } catch (cleanupError) {
+        console.error('Could not remove an unverified emergency recovery copy:', cleanupError);
+      }
+    }
+    console.error('Could not write emergency recovery copy:', error);
+    return { success: false, error: 'Emergency backup could not be written and verified.' };
+  }
 });
 
 ipcMain.handle('backup:get-status', async (event) => {

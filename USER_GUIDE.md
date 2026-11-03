@@ -101,6 +101,9 @@ Welcome to **KitabuPOS**, an offline bookshop management system engineered for h
 - **Cashier**: Restricted strictly to POS sales. Cannot view wholesale purchase costs, profit margins, reports, or administrative settings.
 - **5-Failure Lockout Protection**: 5 consecutive incorrect password or PIN unlock attempts lock the account for 5 minutes (doubling on repeated lockout events). Lockout state is persisted in the database.
 - **Inactivity Auto-Lock**: Screen locks after the configured timeout (default: 15 minutes) to protect unattended tills.
+- **Offline Administrator Recovery**: During first-run setup, save the one-time recovery code somewhere secure and separate from the computer. If the administrator forgets the password, choose **Forgot Administrator Password?** on the sign-in screen, use the code to set a new password, save the replacement code, then sign in normally. Recovery works offline and does not affect business records.
+- **Recovery code management**: An authenticated designated administrator can open **Settings → Security & Audits → Administrator Recovery** and re-enter the administrator password to configure or replace the code. Replacing it invalidates the old code immediately.
+- **No code available**: If the administrator never configured a recovery code, there is no master password or in-app bypass. Preserve a complete copy of the app's user-data directory and request an owner-authorized recovery procedure; do not reset or edit the original database.
 
 ### G. Backup & Disaster Recovery
 - **Automatic Backups**: The system writes verified `.sqlite` snapshots to `<userData>/Backups` with automatic rotation (keeps 14 daily + 8 weekly files).

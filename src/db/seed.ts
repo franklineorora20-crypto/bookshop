@@ -7,7 +7,7 @@ export async function getSeedQueries(): Promise<string[]> {
   const now = new Date().toISOString();
 
   return [
-    `INSERT INTO schema_migrations (version, applied_at) VALUES (1, '${now}'), (2, '${now}'), (3, '${now}');`,
+    `INSERT INTO schema_migrations (version, applied_at) VALUES (1, '${now}'), (2, '${now}'), (3, '${now}'), (4, '${now}');`,
 
     `INSERT INTO users (id, username, full_name, role, password_hash, pin, is_active, created_at) VALUES 
       (1, 'admin', 'System Administrator', 'admin', '${adminHash}', NULL, 1, '${now}'),

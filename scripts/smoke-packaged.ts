@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,24 +27,28 @@ async function runSmokeTest() {
   }
 
   console.log('[Smoke] Launching Electron app headlessly via Playwright _electron...');
-  const app = await electron.launch({
-    args: [
-      mainJs,
-      '--no-sandbox',
-      '--disable-gpu',
-      '--disable-dev-shm-usage',
-      '--headless',
-    ],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      ELECTRON_ENABLE_LOGGING: '1',
-    },
-  });
-
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'kitabupos-smoke-'));
+  let app: Awaited<ReturnType<typeof electron.launch>> | null = null;
   const errors: string[] = [];
 
   try {
+    app = await electron.launch({
+      args: [
+        mainJs,
+        '--no-sandbox',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-background-networking',
+        '--host-resolver-rules=MAP * ~NOTFOUND',
+        `--user-data-dir=${userData}`,
+        '--headless',
+      ],
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        ELECTRON_ENABLE_LOGGING: '1',
+      },
+    });
     const window = await app.firstWindow();
 
     window.on('console', (msg) => {
@@ -88,7 +93,8 @@ async function runSmokeTest() {
 
     console.log('[Smoke] PASS: Packaged application rendered successfully with 0 wasm or asset errors.');
   } finally {
-    await app.close();
+    if (app) await app.close();
+    fs.rmSync(userData, { recursive: true, force: true });
   }
 }
 

@@ -30,7 +30,12 @@ import {
   DatabaseRecoveryRequired,
 } from './db/database.ts';
 import { FirstRunWizard } from './components/setup/FirstRunWizard.tsx';
-import { getStoredSession, saveSession, hasPermission } from './services/auth.ts';
+import {
+  validateStoredSession,
+  saveSession,
+  hasPermission,
+  subscribeSessionsInvalidated,
+} from './services/auth.ts';
 
 export default function App() {
   // Authentication & session
@@ -86,20 +91,42 @@ export default function App() {
 
   // Initial load
   useEffect(() => {
-    const session = getStoredSession();
-    if (session) {
-      setCurrentUser({
-        id: session.userId,
-        username: session.name,
-        full_name: session.name,
-        role: session.role,
-        is_active: 1,
-        created_at: '',
+    let cancelled = false;
+    void validateStoredSession()
+      .then((session) => {
+        if (!session || cancelled) return;
+        setCurrentUser({
+          id: session.userId,
+          username: session.name,
+          full_name: session.name,
+          role: session.role,
+          is_active: 1,
+          created_at: '',
+          auth_version: session.authVersion,
+        });
+        setIsLocked(session.locked);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Could not validate the saved login session:', error);
+          saveSession(null);
+        }
       });
-      setIsLocked(session.locked || false);
-    }
     refreshAllData();
+    return () => {
+      cancelled = true;
+    };
   }, [refreshAllData]);
+
+  useEffect(
+    () =>
+      subscribeSessionsInvalidated(() => {
+        saveSession(null);
+        setCurrentUser(null);
+        setIsLocked(false);
+      }),
+    []
+  );
 
   // Gate all view routes by role (cashiers restricted to POS)
   useEffect(() => {
@@ -127,7 +154,13 @@ export default function App() {
     const checkInterval = setInterval(() => {
       if (Date.now() - lastActivityRef.current >= timeoutMs) {
         setIsLocked(true);
-        saveSession({ userId: currentUser.id, role: currentUser.role, name: currentUser.full_name, locked: true });
+        saveSession({
+          userId: currentUser.id,
+          role: currentUser.role,
+          name: currentUser.full_name,
+          locked: true,
+          authVersion: currentUser.auth_version ?? 0,
+        });
       }
     }, 10000);
 
@@ -186,7 +219,13 @@ export default function App() {
   const handleLock = () => {
     if (!currentUser) return;
     setIsLocked(true);
-    saveSession({ userId: currentUser.id, role: currentUser.role, name: currentUser.full_name, locked: true });
+    saveSession({
+      userId: currentUser.id,
+      role: currentUser.role,
+      name: currentUser.full_name,
+      locked: true,
+      authVersion: currentUser.auth_version ?? 0,
+    });
   };
 
   // Handle Unlock
@@ -194,7 +233,13 @@ export default function App() {
     if (!currentUser) return;
     setIsLocked(false);
     lastActivityRef.current = Date.now();
-    saveSession({ userId: currentUser.id, role: currentUser.role, name: currentUser.full_name, locked: false });
+    saveSession({
+      userId: currentUser.id,
+      role: currentUser.role,
+      name: currentUser.full_name,
+      locked: false,
+      authVersion: currentUser.auth_version ?? 0,
+    });
   };
 
   // Automated & Manual Backup Handler
@@ -303,7 +348,13 @@ export default function App() {
             setCurrentUser(adminUser);
             setIsLocked(false);
             lastActivityRef.current = Date.now();
-            saveSession({ userId: adminUser.id, role: adminUser.role, name: adminUser.full_name, locked: false });
+            saveSession({
+              userId: adminUser.id,
+              role: adminUser.role,
+              name: adminUser.full_name,
+              locked: false,
+              authVersion: adminUser.auth_version ?? 0,
+            });
             refreshAllData();
           }}
         />
@@ -320,7 +371,13 @@ export default function App() {
             setCurrentUser(user);
             setIsLocked(false);
             lastActivityRef.current = Date.now();
-            saveSession({ userId: user.id, role: user.role, name: user.full_name, locked: false });
+            saveSession({
+              userId: user.id,
+              role: user.role,
+              name: user.full_name,
+              locked: false,
+              authVersion: user.auth_version ?? 0,
+            });
           }}
           onResetAndSetup={handleResetAndStartSetup}
         />

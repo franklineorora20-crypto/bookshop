@@ -197,14 +197,15 @@ function openIDB(): Promise<IDBDatabase> {
   });
 }
 
-async function saveToIndexedDB(data: Uint8Array): Promise<void> {
+async function saveToIndexedDB(data: Uint8Array, key = 'main_db'): Promise<void> {
   const idb = await openIDB();
   return new Promise((resolve, reject) => {
     const tx = idb.transaction('sqlite', 'readwrite');
     const store = tx.objectStore('sqlite');
-    const req = store.put(data, 'main_db');
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    store.put(data, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Database storage transaction was aborted.'));
   });
 }
 
@@ -272,15 +273,21 @@ async function loadFromIndexedDB(): Promise<Uint8Array | null> {
 export async function verifyDatabaseBinary(binary: Uint8Array): Promise<boolean> {
   if (!binary || binary.byteLength === 0) return false;
   const sqlEngine = await getSqlJsEngine();
+  let testDb: Database | null = null;
   try {
-    const testDb = new sqlEngine.Database(binary);
+    testDb = new sqlEngine.Database(binary);
+    testDb.run('PRAGMA foreign_keys = ON;');
     const check = testDb.exec('PRAGMA integrity_check;');
-    const ok = check[0]?.values[0]?.[0] === 'ok';
-    testDb.close();
-    return ok;
+    const foreignKeyCheck = testDb.exec('PRAGMA foreign_key_check;');
+    return (
+      check[0]?.values[0]?.[0] === 'ok' &&
+      (!foreignKeyCheck[0]?.values || foreignKeyCheck[0].values.length === 0)
+    );
   } catch (e) {
     console.error('Database binary integrity check failed:', e);
     return false;
+  } finally {
+    testDb?.close();
   }
 }
 
@@ -359,7 +366,7 @@ export async function startFreshAfterCorruptRecovery(confirmation: string): Prom
   dbInstance = freshDb;
 }
 
-export async function migrateDatabase(db: Database): Promise<void> {
+export async function migrateDatabase(db: Database, persistChanges = true): Promise<void> {
   // Verify backup before any migration
   const preBackup = db.export();
   const isValidBackup = await verifyDatabaseBinary(preBackup);
@@ -404,6 +411,19 @@ export async function migrateDatabase(db: Database): Promise<void> {
       db.run(`INSERT INTO schema_migrations (version, applied_at) VALUES (3, '${now}');`);
     }
 
+    if (!appliedVersions.includes(4)) {
+      const userColumns = db.exec('PRAGMA table_info(users);')[0]?.values || [];
+      if (!userColumns.some((column) => column[1] === 'auth_version')) {
+        db.run('ALTER TABLE users ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0;');
+      }
+      db.run(`CREATE TABLE IF NOT EXISTS administrator_recovery (
+        admin_user_id INTEGER PRIMARY KEY REFERENCES users(id),
+        recovery_hash TEXT NOT NULL,
+        configured_at TEXT NOT NULL
+      );`);
+      db.run(`INSERT INTO schema_migrations (version, applied_at) VALUES (4, '${now}');`);
+    }
+
     // Verify foreign key constraints are clean
     const fkCheck = db.exec('PRAGMA foreign_key_check;');
     if (fkCheck.length > 0 && fkCheck[0]?.values && fkCheck[0].values.length > 0) {
@@ -411,7 +431,7 @@ export async function migrateDatabase(db: Database): Promise<void> {
     }
 
     db.run('COMMIT;');
-    await persistDbToStorage(db);
+    if (persistChanges) await persistDbToStorage(db);
   } catch (migErr) {
     safeRollback(db);
     console.error('Migration failed and rolled back:', migErr);
@@ -429,7 +449,7 @@ async function initFreshDatabase(db: Database): Promise<void> {
       console.warn('Seed statement error (ignored if already existing):', e);
     }
   }
-  db.run(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (3, '${new Date().toISOString()}');`);
+  db.run(`INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (4, '${new Date().toISOString()}');`);
   await persistDbToStorage(db);
 }
 
@@ -468,10 +488,408 @@ export async function checkDatabaseIntegrity(): Promise<{ ok: boolean; message: 
   const db = await getDatabase();
   const res = db.exec('PRAGMA integrity_check;');
   const status = res[0]?.values[0]?.[0] as string;
-  if (status === 'ok') {
-    return { ok: true, message: 'SQLite Database Integrity verified. All pages and indexes valid (0 errors).' };
+  const foreignKeyRes = db.exec('PRAGMA foreign_key_check;');
+  const foreignKeyViolations = foreignKeyRes[0]?.values || [];
+  if (status === 'ok' && foreignKeyViolations.length === 0) {
+    return { ok: true, message: 'SQLite integrity and foreign-key checks passed.' };
   }
-  return { ok: false, message: `Integrity check failed: ${status}` };
+  return {
+    ok: false,
+    message:
+      status !== 'ok'
+        ? `SQLite integrity check failed: ${status}`
+        : `Foreign-key check found ${foreignKeyViolations.length} violation(s).`,
+  };
+}
+
+const ADMIN_RECOVERY_LOCKOUT_KEY = 'administrator-recovery';
+const RECOVERY_BACKUP_KEY = 'pre_recovery_safety_backup';
+let recoveryOperationInProgress = false;
+
+async function withRecoveryOperationLock<T>(operation: () => Promise<T>): Promise<T> {
+  const run = async () => {
+    if (recoveryOperationInProgress) {
+      throw new Error('A recovery security change is already in progress.');
+    }
+    recoveryOperationInProgress = true;
+    try {
+      return await operation();
+    } finally {
+      recoveryOperationInProgress = false;
+    }
+  };
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    return navigator.locks.request('kitabupos-administrator-recovery', run);
+  }
+  return run();
+}
+
+export interface AdministratorRecoveryStatus {
+  configured: boolean;
+  configuredAt: string | null;
+}
+
+function getDatabaseRow<T>(db: Database, sql: string, params: unknown[] = []): T | null {
+  const statement = db.prepare(sql);
+  try {
+    statement.bind(params as (string | number | null | Uint8Array)[]);
+    return statement.step() ? (statement.getAsObject() as T) : null;
+  } finally {
+    statement.free();
+  }
+}
+
+function formatRecoveryCode(bytes: Uint8Array): string {
+  const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  let bitBuffer = 0;
+  let bitCount = 0;
+  let encoded = '';
+  for (const byte of bytes) {
+    bitBuffer = (bitBuffer << 8) | byte;
+    bitCount += 8;
+    while (bitCount >= 5) {
+      bitCount -= 5;
+      encoded += alphabet[(bitBuffer >>> bitCount) & 31];
+      bitBuffer &= (1 << bitCount) - 1;
+    }
+  }
+  return encoded.match(/.{1,4}/g)?.join('-') || '';
+}
+
+export function generateAdministratorRecoveryCode(): string {
+  const secureCrypto = globalThis.crypto;
+  if (!secureCrypto?.getRandomValues) {
+    throw new Error('Secure recovery-code generation is unavailable on this device.');
+  }
+  return formatRecoveryCode(secureCrypto.getRandomValues(new Uint8Array(20)));
+}
+
+function normalizeRecoveryCode(code: string): string {
+  return code.replace(/[\s-]/g, '').toUpperCase();
+}
+
+async function createRecoverySafetyBackup(db: Database, binary: Uint8Array): Promise<void> {
+  if (!(await verifyDatabaseBinary(binary))) {
+    throw new Error('A verified emergency backup could not be created. Password recovery was stopped.');
+  }
+  let storedCopy: Uint8Array | null = null;
+  if (mockStorageForTests) {
+    mockStorageForTests.set(RECOVERY_BACKUP_KEY, binary);
+    storedCopy = mockStorageForTests.get(RECOVERY_BACKUP_KEY) || null;
+  } else if (typeof window !== 'undefined' && window.indexedDB) {
+    await saveToIndexedDB(binary, RECOVERY_BACKUP_KEY);
+    const idb = await openIDB();
+    storedCopy = await new Promise<Uint8Array | null>((resolve, reject) => {
+      const tx = idb.transaction('sqlite', 'readonly');
+      const request = tx.objectStore('sqlite').get(RECOVERY_BACKUP_KEY);
+      request.onsuccess = () => resolve(request.result ? new Uint8Array(request.result) : null);
+      request.onerror = () => reject(request.error);
+    });
+  } else {
+    throw new Error('Emergency backup storage is unavailable. Password recovery was stopped.');
+  }
+
+  if (
+    !storedCopy ||
+    storedCopy.byteLength !== binary.byteLength ||
+    storedCopy.some((byte, index) => byte !== binary[index]) ||
+    !(await verifyDatabaseBinary(storedCopy))
+  ) {
+    throw new Error('The emergency database copy could not be read back and verified. Password recovery was stopped.');
+  }
+
+  const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
+  if (api?.createEmergencyBackup) {
+    const result = await api.createEmergencyBackup(binary);
+    if (!result?.success) {
+      throw new Error('The desktop emergency backup could not be written. Password recovery was stopped.');
+    }
+  }
+
+  const liveCopy = db.export();
+  if (
+    liveCopy.byteLength !== binary.byteLength ||
+    liveCopy.some((byte, index) => byte !== binary[index])
+  ) {
+    throw new Error('The live database could not be verified after creating its emergency backup.');
+  }
+}
+
+async function persistRecoveryTransaction(db: Database, previousBinary: Uint8Array): Promise<void> {
+  db.run('COMMIT;');
+  try {
+    await persistDbToStorage(db);
+    const persistedBinary = mockStorageForTests
+      ? mockStorageForTests.get('main_db') || null
+      : typeof window !== 'undefined' && window.indexedDB
+        ? await loadFromIndexedDB()
+        : null;
+    const currentBinary = db.export();
+    if (
+      !persistedBinary ||
+      persistedBinary.byteLength !== currentBinary.byteLength ||
+      persistedBinary.some((byte, index) => byte !== currentBinary[index]) ||
+      !(await verifyDatabaseBinary(persistedBinary))
+    ) {
+      throw new Error('The updated credentials could not be verified in persistent storage.');
+    }
+  } catch (error) {
+    try {
+      if (mockStorageForTests) {
+        mockStorageForTests.set('main_db', previousBinary);
+      } else if (typeof window !== 'undefined' && window.indexedDB) {
+        await saveToIndexedDB(previousBinary);
+      } else {
+        throw new Error('Persistent database storage is unavailable.');
+      }
+    } catch (restoreError) {
+      console.error('Could not roll back an unverified credential update from persistent storage:', restoreError);
+    }
+    const sqlEngine = await getSqlJsEngine();
+    const restoredDb = new sqlEngine.Database(previousBinary);
+    restoredDb.run('PRAGMA foreign_keys = ON;');
+    dbInstance = restoredDb;
+    db.close();
+    throw error;
+  }
+}
+
+function requireDesignatedAdministrator(db: Database, adminUserId: number) {
+  const admin = getDatabaseRow<{
+    id: number;
+    username: string;
+    full_name: string;
+    role: UserRole;
+    password_hash: string;
+    is_active: number;
+  }>(
+    db,
+    'SELECT id, username, full_name, role, password_hash, is_active FROM users WHERE id = ?;',
+    [adminUserId]
+  );
+  if (adminUserId !== 1 || !admin || admin.role !== 'admin' || admin.is_active !== 1) {
+    throw new Error('Administrator recovery is unavailable for this account.');
+  }
+  return admin;
+}
+
+export async function getAdministratorRecoveryStatus(): Promise<AdministratorRecoveryStatus> {
+  const row = await runQueryOne<{ configured_at: string }>(
+    'SELECT configured_at FROM administrator_recovery WHERE admin_user_id = 1;'
+  );
+  return { configured: Boolean(row), configuredAt: row?.configured_at || null };
+}
+
+async function configureInitialAdministratorRecoveryCodeUnlocked(code: string): Promise<void> {
+  const db = await getDatabase();
+  const setup = getDatabaseRow<{ value: string }>(
+    db,
+    "SELECT value FROM shop_settings WHERE key = 'is_setup_completed';"
+  );
+  if (setup?.value !== 'false') {
+    throw new Error('Initial recovery setup is no longer available.');
+  }
+  requireDesignatedAdministrator(db, 1);
+  const normalizedCode = normalizeRecoveryCode(code);
+  if (!/^[0-9A-HJKMNP-TV-Z]{32}$/.test(normalizedCode)) {
+    throw new Error('The recovery code could not be securely registered.');
+  }
+
+  const previousBinary = db.export();
+  const recoveryHash = bcrypt.hashSync(normalizedCode, 10);
+  const now = new Date().toISOString();
+  db.run('BEGIN TRANSACTION;');
+  try {
+    db.run(
+      `INSERT INTO administrator_recovery (admin_user_id, recovery_hash, configured_at)
+       VALUES (1, ?, ?)
+       ON CONFLICT(admin_user_id) DO UPDATE SET recovery_hash = excluded.recovery_hash, configured_at = excluded.configured_at;`,
+      [recoveryHash, now]
+    );
+    db.run(
+      `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at)
+       VALUES (1, 'System Administrator', 'ADMIN_RECOVERY_CONFIGURED', 'security', '1', 'Administrator recovery was configured during first-run setup.', ?);`,
+      [now]
+    );
+    await persistRecoveryTransaction(db, previousBinary);
+  } catch (error) {
+    safeRollback(db);
+    throw error;
+  }
+}
+
+async function regenerateAdministratorRecoveryCodeUnlocked(
+  adminUserId: number,
+  password: string,
+  code: string
+): Promise<void> {
+  const db = await getDatabase();
+  const admin = requireDesignatedAdministrator(db, adminUserId);
+  if (
+    !password ||
+    !(bcrypt.compareSync(password, admin.password_hash) || bcrypt.compareSync(password.trim(), admin.password_hash))
+  ) {
+    throw new Error('Administrator password could not be verified.');
+  }
+  const normalizedCode = normalizeRecoveryCode(code);
+  if (!/^[0-9A-HJKMNP-TV-Z]{32}$/.test(normalizedCode)) {
+    throw new Error('The recovery code could not be securely registered.');
+  }
+
+  const previousBinary = db.export();
+  await createRecoverySafetyBackup(db, previousBinary);
+  const recoveryHash = bcrypt.hashSync(normalizedCode, 10);
+  const now = new Date().toISOString();
+  db.run('BEGIN TRANSACTION;');
+  try {
+    db.run(
+      `INSERT INTO administrator_recovery (admin_user_id, recovery_hash, configured_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(admin_user_id) DO UPDATE SET recovery_hash = excluded.recovery_hash, configured_at = excluded.configured_at;`,
+      [adminUserId, recoveryHash, now]
+    );
+    db.run(
+      `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at)
+       VALUES (?, ?, 'ADMIN_RECOVERY_REGENERATED', 'security', ?, 'Administrator recovery code was regenerated by an authenticated administrator.', ?);`,
+      [adminUserId, admin.full_name, String(adminUserId), now]
+    );
+    await persistRecoveryTransaction(db, previousBinary);
+  } catch (error) {
+    safeRollback(db);
+    throw error;
+  }
+}
+
+function recordRecoveryFailure(db: Database): void {
+  const row = getDatabaseRow<{ failed_attempts: number }>(
+    db,
+    'SELECT failed_attempts FROM auth_lockouts WHERE identifier = ?;',
+    [ADMIN_RECOVERY_LOCKOUT_KEY]
+  );
+  const attempts = (row?.failed_attempts || 0) + 1;
+  const lockMinutes = attempts >= 5 ? Math.min(24 * 60, 5 * Math.pow(2, Math.min(attempts - 5, 12))) : 0;
+  const lockedUntil = lockMinutes ? new Date(Date.now() + lockMinutes * 60 * 1000).toISOString() : null;
+  db.run(
+    `INSERT INTO auth_lockouts (identifier, failed_attempts, locked_until)
+     VALUES (?, ?, ?)
+     ON CONFLICT(identifier) DO UPDATE SET failed_attempts = excluded.failed_attempts, locked_until = excluded.locked_until;`,
+    [ADMIN_RECOVERY_LOCKOUT_KEY, attempts, lockedUntil]
+  );
+}
+
+async function recoverAdministratorPasswordUnlocked(
+  username: string,
+  recoveryCode: string,
+  newPassword: string,
+  confirmPassword: string
+): Promise<{ recoveryCode: string }> {
+  if (!newPassword || newPassword.trim().length < 8 || newPassword !== confirmPassword) {
+    throw new Error('Enter matching passwords with at least 8 characters.');
+  }
+  if (newPassword.trim() === 'admin123' || newPassword.trim() === 'cashier123') {
+    throw new Error('Choose a new, non-default password.');
+  }
+
+  const db = await getDatabase();
+  const previousBinary = db.export();
+  const lockout = getDatabaseRow<{ failed_attempts: number; locked_until: string | null }>(
+    db,
+    'SELECT failed_attempts, locked_until FROM auth_lockouts WHERE identifier = ?;',
+    [ADMIN_RECOVERY_LOCKOUT_KEY]
+  );
+  if (lockout?.locked_until && Date.parse(lockout.locked_until) > Date.now()) {
+    throw new Error('Recovery is temporarily unavailable. Please wait before trying again.');
+  }
+
+  const admin = getDatabaseRow<{
+    id: number;
+    username: string;
+    full_name: string;
+    role: UserRole;
+    is_active: number;
+    recovery_hash: string | null;
+  }>(
+    db,
+    `SELECT u.id, u.username, u.full_name, u.role, u.is_active, r.recovery_hash
+     FROM users u LEFT JOIN administrator_recovery r ON r.admin_user_id = u.id
+     WHERE LOWER(TRIM(u.username)) = LOWER(TRIM(?)) AND u.id = 1;`,
+    [username]
+  );
+  const normalizedCode = normalizeRecoveryCode(recoveryCode);
+  const codeFormatValid = /^[0-9A-HJKMNP-TV-Z]{32}$/.test(normalizedCode);
+  const validCode = Boolean(
+    admin &&
+      admin.role === 'admin' &&
+      admin.is_active === 1 &&
+      admin.recovery_hash &&
+      codeFormatValid &&
+      bcrypt.compareSync(normalizedCode, admin.recovery_hash)
+  );
+
+  if (!validCode || !admin) {
+    db.run('BEGIN TRANSACTION;');
+    try {
+      recordRecoveryFailure(db);
+      await persistRecoveryTransaction(db, previousBinary);
+    } catch (error) {
+      safeRollback(db);
+      throw error;
+    }
+    throw new Error('Recovery could not be completed. Check the information or wait before trying again.');
+  }
+
+  await createRecoverySafetyBackup(db, previousBinary);
+  const replacementCode = generateAdministratorRecoveryCode();
+  const passwordHash = bcrypt.hashSync(newPassword.trim(), 10);
+  const replacementHash = bcrypt.hashSync(normalizeRecoveryCode(replacementCode), 10);
+  const now = new Date().toISOString();
+  db.run('BEGIN TRANSACTION;');
+  try {
+    db.run(
+      'UPDATE users SET password_hash = ?, auth_version = auth_version + 1, last_login = NULL WHERE id = 1;',
+      [passwordHash]
+    );
+    db.run(
+      'UPDATE administrator_recovery SET recovery_hash = ?, configured_at = ? WHERE admin_user_id = 1;',
+      [replacementHash, now]
+    );
+    db.run('DELETE FROM auth_lockouts WHERE identifier = ?;', [ADMIN_RECOVERY_LOCKOUT_KEY]);
+    db.run(
+      `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at)
+       VALUES (1, ?, 'ADMIN_PASSWORD_RECOVERED', 'security', '1', 'Administrator password recovery completed offline; existing business records were preserved.', ?);`,
+      [admin.full_name, now]
+    );
+    await persistRecoveryTransaction(db, previousBinary);
+    return { recoveryCode: replacementCode };
+  } catch (error) {
+    safeRollback(db);
+    throw error;
+  }
+}
+
+export async function configureInitialAdministratorRecoveryCode(code: string): Promise<void> {
+  return withRecoveryOperationLock(() => configureInitialAdministratorRecoveryCodeUnlocked(code));
+}
+
+export async function regenerateAdministratorRecoveryCode(
+  adminUserId: number,
+  password: string,
+  code: string
+): Promise<void> {
+  return withRecoveryOperationLock(() =>
+    regenerateAdministratorRecoveryCodeUnlocked(adminUserId, password, code)
+  );
+}
+
+export async function recoverAdministratorPassword(
+  username: string,
+  recoveryCode: string,
+  newPassword: string,
+  confirmPassword: string
+): Promise<{ recoveryCode: string }> {
+  return withRecoveryOperationLock(() =>
+    recoverAdministratorPasswordUnlocked(username, recoveryCode, newPassword, confirmPassword)
+  );
 }
 
 // Backup & Export
@@ -513,6 +931,15 @@ export async function restoreDatabaseBinary(
   if (!tables[0] || tables[0].values.length < 3) {
     candidateDb.close();
     return { ok: false, message: 'Restoration aborted: Missing required KitabuPOS tables (books, sales, users).' };
+  }
+  try {
+    await migrateDatabase(candidateDb, false);
+  } catch (error) {
+    candidateDb.close();
+    return {
+      ok: false,
+      message: `Restoration aborted: The backup could not be safely upgraded for this version (${error instanceof Error ? error.message : 'migration failed'}).`,
+    };
   }
 
   // 2. Pre-restore automatic backup saved to IndexedDB (never localStorage)
@@ -2004,6 +2431,14 @@ export async function updateUser(
   if (userData.password_hash) {
     finalPasswordHash = userData.password_hash.startsWith('$2') ? userData.password_hash : bcrypt.hashSync(userData.password_hash.trim(), 10);
   }
+  const updatedRole = userData.role !== undefined ? userData.role : current.role;
+  const updatedIsActive = userData.is_active !== undefined ? userData.is_active : current.is_active;
+  const authVersionDelta =
+    finalPasswordHash !== current.password_hash ||
+    updatedRole !== current.role ||
+    updatedIsActive !== current.is_active
+      ? 1
+      : 0;
 
   await runExecute(
     `UPDATE users SET
@@ -2012,15 +2447,17 @@ export async function updateUser(
       role = ?,
       is_active = ?,
       pin = ?,
-      password_hash = ?
+      password_hash = ?,
+      auth_version = auth_version + ?
      WHERE id = ?;`,
     [
       newUsername,
       userData.full_name !== undefined ? userData.full_name.trim() : current.full_name,
-      userData.role !== undefined ? userData.role : current.role,
-      userData.is_active !== undefined ? userData.is_active : current.is_active,
+      updatedRole,
+      updatedIsActive,
       finalPin,
       finalPasswordHash,
+      authVersionDelta,
       id,
     ]
   );
@@ -2227,4 +2664,3 @@ export async function resetDatabaseToFreshSetup(): Promise<void> {
   freshDb.run('PRAGMA foreign_keys = ON;');
   dbInstance = freshDb;
 }
-

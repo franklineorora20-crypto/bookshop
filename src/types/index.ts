@@ -13,6 +13,7 @@ export interface User {
   last_login?: string;
   failed_login_attempts?: number;
   locked_until?: string | null;
+  auth_version?: number;
 }
 
 export interface Book {

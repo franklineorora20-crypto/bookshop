@@ -28,6 +28,7 @@ import {
   Smartphone,
   Info,
   RotateCcw,
+  Copy,
 } from 'lucide-react';
 import type { ShopSettings, User } from '../../types/index.ts';
 import {
@@ -39,6 +40,9 @@ import {
   updateShopSettings,
   getAuditLogs,
   cleanBusinessDatabase,
+  getAdministratorRecoveryStatus,
+  generateAdministratorRecoveryCode,
+  regenerateAdministratorRecoveryCode,
 } from '../../db/database.ts';
 import { formatDateTime, formatKES } from '../../utils/formatters.ts';
 import { Button } from '../common/Button.tsx';
@@ -101,6 +105,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [sessionTimeout, setSessionTimeout] = useState(
     settings?.session_timeout_minutes?.toString() || '15'
   );
+  const [recoveryStatus, setRecoveryStatus] = useState<{ configured: boolean; configuredAt: string | null } | null>(null);
+  const [recoveryPassword, setRecoveryPassword] = useState('');
+  const [newRecoveryCode, setNewRecoveryCode] = useState<string | null>(null);
+  const [recoveryCodeAcknowledged, setRecoveryCodeAcknowledged] = useState(false);
+  const [recoveryActionError, setRecoveryActionError] = useState<string | null>(null);
+  const [isRegeneratingRecoveryCode, setIsRegeneratingRecoveryCode] = useState(false);
 
   // Backup & Integrity state
   const [backupSchedule, setBackupSchedule] = useState<'daily' | 'weekly' | 'manual'>(
@@ -178,8 +188,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   useEffect(() => {
     if (activeTab === 'security') {
       loadAuditLogs();
+      getAdministratorRecoveryStatus()
+        .then(setRecoveryStatus)
+        .catch((error) => {
+          console.error('Failed to load administrator recovery status:', error);
+          toast.error('Could not load administrator recovery status.');
+        });
     }
   }, [activeTab]);
+
+  const handleRegenerateRecoveryCode = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentUser || currentUser.id !== 1 || currentUser.role !== 'admin') {
+      setRecoveryActionError('Only the designated administrator can manage this recovery code.');
+      return;
+    }
+    setRecoveryActionError(null);
+    setIsRegeneratingRecoveryCode(true);
+    try {
+      const code = generateAdministratorRecoveryCode();
+      await regenerateAdministratorRecoveryCode(currentUser.id, recoveryPassword, code);
+      setNewRecoveryCode(code);
+      setRecoveryCodeAcknowledged(false);
+      setRecoveryPassword('');
+      setRecoveryStatus(await getAdministratorRecoveryStatus());
+      toast.success('New administrator recovery code configured.');
+    } catch (error: any) {
+      setRecoveryActionError(error.message || 'Could not regenerate the administrator recovery code.');
+    } finally {
+      setIsRegeneratingRecoveryCode(false);
+    }
+  };
 
   const handleSaveAllSettings = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -827,6 +866,102 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </p>
             </div>
           </div>
+
+          {currentUser?.id === 1 && currentUser.role === 'admin' && (
+            <section className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-4 max-w-3xl">
+              <div>
+                <h3 className="font-bold text-base text-neutral-900">Administrator Recovery</h3>
+                <p className="mt-1 text-sm text-neutral-600">
+                  Set up an offline recovery code so the administrator can regain access without email or internet.
+                </p>
+              </div>
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm">
+                <p>
+                  Recovery code status:{' '}
+                  <strong className={recoveryStatus?.configured ? 'text-emerald-700' : 'text-amber-700'}>
+                    {recoveryStatus === null ? 'Checking…' : recoveryStatus.configured ? 'Configured' : 'Not configured'}
+                  </strong>
+                </p>
+                {recoveryStatus?.configuredAt && (
+                  <p className="mt-1 text-xs text-neutral-600">
+                    Last configured: {formatDateTime(recoveryStatus.configuredAt)}
+                  </p>
+                )}
+              </div>
+              <p className="text-sm text-amber-800">
+                Regenerating replaces the previous recovery code immediately. Save the new code somewhere safe.
+              </p>
+
+              {newRecoveryCode && !recoveryCodeAcknowledged ? (
+                <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-semibold text-emerald-900">
+                    This replacement code is shown once. Copy or print it before acknowledging.
+                  </p>
+                  <div className="rounded border border-emerald-200 bg-white p-3 text-center">
+                    <code className="break-all font-mono text-lg font-bold tracking-wider text-neutral-900">
+                      {newRecoveryCode}
+                    </code>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(newRecoveryCode);
+                          toast.success('Recovery code copied.');
+                        } catch {
+                          setRecoveryActionError('Copy was unavailable. Select and copy the recovery code manually.');
+                        }
+                      }}
+                    >
+                      <Copy className="w-4 h-4" /> Copy code
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => window.print()}>
+                      Print code
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={() => {
+                        setNewRecoveryCode(null);
+                        setRecoveryCodeAcknowledged(true);
+                      }}
+                    >
+                      I saved this code
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleRegenerateRecoveryCode} className="space-y-3">
+                  {recoveryActionError && (
+                    <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                      {recoveryActionError}
+                    </div>
+                  )}
+                  {recoveryCodeAcknowledged && (
+                    <p role="status" className="text-sm font-medium text-emerald-800">
+                      New recovery code saved and acknowledged.
+                    </p>
+                  )}
+                  <label className="block text-xs font-semibold text-neutral-700">
+                    Re-enter administrator password to regenerate
+                    <input
+                      type="password"
+                      required
+                      autoComplete="current-password"
+                      value={recoveryPassword}
+                      onChange={(event) => setRecoveryPassword(event.target.value)}
+                      className="mt-1 w-full sm:max-w-sm min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200"
+                    />
+                  </label>
+                  <Button type="submit" variant="primary" loading={isRegeneratingRecoveryCode}>
+                    Regenerate recovery code
+                  </Button>
+                </form>
+              )}
+            </section>
+          )}
 
           {/* Audit Logs Table */}
           <div className="bg-white rounded-xl border border-neutral-200/80 shadow-xs overflow-hidden">

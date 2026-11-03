@@ -8,10 +8,12 @@
     "build": "vite build",
     "build:electron": "esbuild electron/main.ts --bundle --platform=node --format=esm --outfile=dist-electron/main.js --external:electron && esbuild electron/preload.ts --bundle --platform=node --format=cjs --outfile=dist-electron/preload.cjs --external:electron",
     "preview": "vite preview",
-    "test": "node --test src/utils/calculations.test.ts src/utils/csv.test.ts src/db/database.test.ts src/db/hardening.test.ts",
+    "test": "node --test src/utils/calculations.test.ts src/utils/csv.test.ts src/db/database.test.ts src/db/hardening.test.ts src/db/recovery.test.ts",
     "clean": "node -e \"const fs=require('fs'); for (const p of ['dist','dist-electron','release']) fs.rmSync(p,{recursive:true,force:true})\"",
     "build:win": "npm run clean && npm run build && npm run build:electron && electron-builder --win nsis",
     "smoke:packaged": "tsx scripts/smoke-packaged.ts",
+    "smoke": "tsx scripts/smoke-packaged.ts",
+    "recovery:flow": "tsx scripts/recovery-flow.ts",
     "lint": "tsc --noEmit"
   },
   "engines": {

@@ -36,8 +36,14 @@ To protect stores against forgotten backups:
 
 KitabuPOS enforces pre-execution verification on all database binary operations:
 - Every candidate backup must pass SQLite `PRAGMA integrity_check` before any restore, clean, or schema migration is permitted.
+- Candidates and migrations also run `PRAGMA foreign_key_check`; an integrity check alone does not verify foreign-key relationships.
 - If the binary fails the integrity check or is corrupted, the operation is **aborted immediately** without altering active records.
 - Pre-restore and pre-cleanup safety copies are stored in IndexedDB (never localStorage).
+- Administrator password recovery and recovery-code replacement make a separate verified pre-change copy in IndexedDB. In the Electron app, a second read-back-verified emergency `.sqlite` file is created in `<userData>/Backups`; these files are separate from regular daily/weekly rotation.
+
+### Older backup compatibility
+
+Backups from an earlier KitabuPOS version remain supported. A candidate is validated before activation and receives the additive current schema migration; the prior backup file is not modified. The migration retains the existing accounts, password hashes, settings, audit entries, and business records.
 
 ---
 

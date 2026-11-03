@@ -121,7 +121,7 @@ test('A3 [TEST]: lockout and that getUsers/session expose no hash or PIN', async
     assert.equal('pin' in u, false, 'getUsers must not expose pin');
   }
 
-  // 2. Verify sessionStorage exposes only {userId, role, name, locked}
+  // 2. Verify sessionStorage contains identifiers and the auth version, never credentials.
   saveSession({
     userId: 1,
     role: 'admin',
@@ -133,6 +133,7 @@ test('A3 [TEST]: lockout and that getUsers/session expose no hash or PIN', async
   assert.ok(session);
   assert.equal(session.userId, 1);
   assert.equal(session.role, 'admin');
+  assert.equal(session.authVersion, 0);
   assert.equal('password_hash' in (session as any), false, 'Session must not contain password_hash');
   assert.equal('pin' in (session as any), false, 'Session must not contain pin');
 
@@ -606,4 +607,3 @@ test('C3 [TEST]: foreign keys are ON after a save', async () => {
   const fkCheck = db.exec('PRAGMA foreign_keys;');
   assert.equal(fkCheck[0]?.values[0]?.[0], 1, 'PRAGMA foreign_keys must be 1 (ON) after persistDbToStorage');
 });
-

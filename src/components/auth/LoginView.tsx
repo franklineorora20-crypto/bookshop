@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { BookOpen, AlertCircle, ArrowRight, Eye, EyeOff, ShieldCheck, Lock, Clock } from 'lucide-react';
+import { BookOpen, AlertCircle, ArrowRight, ArrowLeft, Copy, Eye, EyeOff, ShieldCheck, Lock, Clock } from 'lucide-react';
 import { KitabuLogo } from '../common/KitabuLogo.tsx';
-import { loginWithPassword, isDefaultPassword, changeUserPassword, validatePassword } from '../../services/auth.ts';
+import {
+  loginWithPassword,
+  isDefaultPassword,
+  changeUserPassword,
+  validatePassword,
+  notifySessionsInvalidated,
+} from '../../services/auth.ts';
 import type { User as UserType } from '../../types/index.ts';
 import { Button } from '../common/Button.tsx';
 import { Modal } from '../common/Modal.tsx';
+import { recoverAdministratorPassword } from '../../db/database.ts';
 
 interface LoginViewProps {
   onLoginSuccess: (user: UserType) => void;
@@ -22,6 +29,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isRecoveryScreenOpen, setIsRecoveryScreenOpen] = useState(false);
+  const [recoveryUsername, setRecoveryUsername] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [recoveryNewPassword, setRecoveryNewPassword] = useState('');
+  const [confirmRecoveryPassword, setConfirmRecoveryPassword] = useState('');
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [replacementRecoveryCode, setReplacementRecoveryCode] = useState<string | null>(null);
 
   // Reset all data modal state
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -100,7 +115,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
       setPasswordChangeError(validation.error || 'Password must be at least 8 characters long.');
       return;
     }
-    if (newPassword === 'admin123' || newPassword === 'cashier123') {
+    if (newPassword.trim() === 'admin123' || newPassword.trim() === 'cashier123') {
       setPasswordChangeError('Please choose a new, non-default password.');
       return;
     }
@@ -111,15 +126,48 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
 
     setIsChangingPassword(true);
     try {
-      await changeUserPassword(pendingUser.id, newPassword);
+      const authVersion = await changeUserPassword(pendingUser.id, newPassword);
       toast.success('Password updated successfully! Welcome to KitabuPOS.');
-      const updatedUser = { ...pendingUser };
+      const updatedUser = { ...pendingUser, auth_version: authVersion };
       setPendingUser(null);
       onLoginSuccess(updatedUser);
     } catch (err: any) {
       setPasswordChangeError(err.message || 'Failed to update password');
     } finally {
       setIsChangingPassword(false);
+    }
+  };
+
+  const handleRecoverySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryError(null);
+    setIsRecovering(true);
+    try {
+      const result = await recoverAdministratorPassword(
+        recoveryUsername,
+        recoveryCode,
+        recoveryNewPassword,
+        confirmRecoveryPassword
+      );
+      notifySessionsInvalidated();
+      setRecoveryCode('');
+      setRecoveryNewPassword('');
+      setConfirmRecoveryPassword('');
+      setReplacementRecoveryCode(result.recoveryCode);
+    } catch (err: any) {
+      setRecoveryError(err.message || 'Recovery could not be completed. Check the information or wait before trying again.');
+    } finally {
+      setIsRecovering(false);
+    }
+  };
+
+  const handleCopyReplacementCode = async () => {
+    if (!replacementRecoveryCode) return;
+    try {
+      await navigator.clipboard.writeText(replacementRecoveryCode);
+      toast.success('Recovery code copied. Store it somewhere safe.');
+    } catch {
+      setRecoveryError('Copy was unavailable. Select and copy the recovery code manually.');
     }
   };
 
@@ -140,11 +188,124 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
           </p>
           <div className="inline-flex items-center gap-1.5 text-xs text-neutral-500 mt-2 font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Online System</span>
+            <span>Offline-ready system</span>
           </div>
         </div>
 
         {/* Login Form */}
+        {replacementRecoveryCode ? (
+          <div className="p-6 space-y-4">
+            <div className="flex items-center gap-2 text-emerald-800">
+              <ShieldCheck className="w-5 h-5" />
+              <h2 className="font-bold">Password recovered</h2>
+            </div>
+            <p className="text-sm text-neutral-600">
+              Save this replacement recovery code now. It is shown only once; sign in with your new password after saving it.
+            </p>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center">
+              <code className="break-all font-mono text-lg font-bold tracking-wider text-neutral-900">
+                {replacementRecoveryCode}
+              </code>
+            </div>
+            {recoveryError && (
+              <p role="alert" className="text-sm text-rose-700">{recoveryError}</p>
+            )}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="secondary" onClick={handleCopyReplacementCode} className="flex-1">
+                <Copy className="w-4 h-4" /> Copy code
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => {
+                  setReplacementRecoveryCode(null);
+                  setRecoveryError(null);
+                  setIsRecoveryScreenOpen(false);
+                  setUsername(recoveryUsername);
+                  setPassword('');
+                }}
+                className="flex-1"
+              >
+                I saved it — go to sign in
+              </Button>
+            </div>
+          </div>
+        ) : isRecoveryScreenOpen ? (
+          <form onSubmit={handleRecoverySubmit} className="p-6 space-y-4">
+            <div className="space-y-1">
+              <h2 className="font-bold text-neutral-900">Recover administrator password</h2>
+              <p className="text-sm text-neutral-600">
+                Use the offline recovery code saved during setup. Recovery codes cannot be used to sign in.
+              </p>
+            </div>
+            {recoveryError && (
+              <div role="alert" className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-sm">
+                {recoveryError}
+              </div>
+            )}
+            <label className="block text-xs font-semibold text-neutral-700">
+              Administrator username
+              <input
+                required
+                autoComplete="username"
+                value={recoveryUsername}
+                onChange={(event) => setRecoveryUsername(event.target.value)}
+                className="mt-1 w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200"
+              />
+            </label>
+            <label className="block text-xs font-semibold text-neutral-700">
+              Administrator recovery code
+              <input
+                required
+                autoComplete="off"
+                autoCapitalize="characters"
+                value={recoveryCode}
+                onChange={(event) => setRecoveryCode(event.target.value.toUpperCase())}
+                className="mt-1 w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200 font-mono"
+              />
+            </label>
+            <label className="block text-xs font-semibold text-neutral-700">
+              New password
+              <input
+                type="password"
+                required
+                autoComplete="new-password"
+                value={recoveryNewPassword}
+                onChange={(event) => setRecoveryNewPassword(event.target.value)}
+                className="mt-1 w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200"
+              />
+            </label>
+            <label className="block text-xs font-semibold text-neutral-700">
+              Confirm new password
+              <input
+                type="password"
+                required
+                autoComplete="new-password"
+                value={confirmRecoveryPassword}
+                onChange={(event) => setConfirmRecoveryPassword(event.target.value)}
+                className="mt-1 w-full min-h-[44px] px-3.5 py-2 text-sm rounded-lg border border-neutral-200"
+              />
+            </label>
+            <div className="flex gap-3 pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setRecoveryError(null);
+                  setIsRecoveryScreenOpen(false);
+                }}
+                disabled={isRecovering}
+                className="flex-1"
+              >
+                <ArrowLeft className="w-4 h-4" /> Back to sign in
+              </Button>
+              <Button type="submit" variant="primary" loading={isRecovering} className="flex-1">
+                Recover password
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && (
             <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-start gap-2.5">
@@ -214,8 +375,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
           </Button>
         </form>
 
-        {onResetAndSetup && (
-          <div className="p-3.5 bg-neutral-50/80 border-t border-neutral-100 text-center">
+        <div className="p-3.5 bg-neutral-50/80 border-t border-neutral-100 text-center space-y-2">
+          <button
+            type="button"
+            onClick={() => {
+              setRecoveryUsername(username);
+              setRecoveryError(null);
+              setIsRecoveryScreenOpen(true);
+            }}
+            className="block mx-auto text-sm font-medium text-teal-700 hover:text-teal-900 underline"
+          >
+            Forgot Administrator Password?
+          </button>
+          {onResetAndSetup && (
             <button
               type="button"
               onClick={() => setIsResetModalOpen(true)}
@@ -223,7 +395,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
             >
               Clear all saved data & start fresh setup
             </button>
-          </div>
+          )}
+        </div>
+          </>
         )}
       </motion.div>
 

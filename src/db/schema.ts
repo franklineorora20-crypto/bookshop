@@ -1,4 +1,4 @@
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 -- Schema Version Tracking
@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   pin TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
-  last_login TEXT
+  last_login TEXT,
+  auth_version INTEGER NOT NULL DEFAULT 0
 );
 
 -- Book Inventory
@@ -180,5 +181,11 @@ CREATE TABLE IF NOT EXISTS auth_lockouts (
   identifier TEXT PRIMARY KEY,
   failed_attempts INTEGER NOT NULL DEFAULT 0,
   locked_until TEXT
+);
+
+CREATE TABLE IF NOT EXISTS administrator_recovery (
+  admin_user_id INTEGER PRIMARY KEY REFERENCES users(id),
+  recovery_hash TEXT NOT NULL,
+  configured_at TEXT NOT NULL
 );
 `;
