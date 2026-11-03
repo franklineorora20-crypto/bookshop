@@ -20,28 +20,29 @@ KitabuPOS is a standalone, offline-first bookshop management and Point-of-Sale (
 ### Software Requirements
 - No internet access required after installation.
 - Embedded SQLite engine—no external database servers (MySQL, PostgreSQL, or SQL Server) required.
-- Node.js 20+ (if compiling from source code).
+- Node.js is not required to install or run the packaged application (only needed to build from source).
+- The supplied Windows installer supports 64-bit Windows 10 and Windows 11 on Intel/AMD processors. It is not an ARM64 installer.
 
 ---
 
 ## 2. Windows Installer Deployment
 
-### Method A: Running the Packaged Windows Setup (`.exe`)
-1. Obtain the installer executable (`KitabuPOS-Setup-${version}.exe`).
-2. Double-click the installer.
-3. If Windows SmartScreen displays a prompt ("Windows protected your PC"), click **More info** and select **Run anyway**.
-4. The NSIS installer guides you through setup:
-   - Select installation directory (defaults to `C:\Program Files\KitabuPOS` or `%LOCALAPPDATA%\Programs\KitabuPOS`).
-   - Leave the option checked to **Create a Desktop Shortcut**.
-   - Check **Create a Start Menu Shortcut**.
-5. Click **Install**.
-6. When installation finishes, leave **Run KitabuPOS** checked and click **Finish**.
-7. Note: The installer does not delete user data on uninstall (`deleteAppDataOnUninstall = false`) to protect business records.
+### Method A: Per-user installation (recommended)
+1. Copy `release/KitabuPOS-Windows-x64-Install.zip` to the Windows 10/11 64-bit computer. It can be copied by USB; internet access is not needed.
+2. Extract the archive, then double-click `Install-KitabuPOS.cmd`. It installs to `%LOCALAPPDATA%\Programs\KitabuPOS` without administrator permission and creates Desktop and Start Menu shortcuts.
+3. If Windows SmartScreen warns about an unrecognized publisher, continue only if you trust where you obtained the package. This build is not code-signed.
+4. To choose another install folder, run `Install-KitabuPOS.cmd -InstallDirectory "D:\Apps\KitabuPOS"`. To launch immediately after installing, add `-Launch`.
+
+To update an existing installation, close KitabuPOS and run the installer again for the same Windows account. Back up business data before updating. The installer only copies application files; it does not delete or replace the separate application data directory. Existing app data remains if you later remove the program folder or shortcuts.
 
 ### Method B: Portable Folder / Unpacked Directory
-1. Copy the `release/win-unpacked` folder to the target machine (e.g. `C:\KitabuPOS`).
-2. Right-click `KitabuPOS.exe` and select **Send to -> Desktop (create shortcut)**.
-3. Double-click the shortcut to launch the application.
+1. Copy `KitabuPOS-Portable-x64.zip` to the target Windows 10/11 64-bit computer and extract it to a writable folder (for example, `C:\KitabuPOS`).
+2. Run `KitabuPOS.exe` from the extracted folder. Create a shortcut if you want quick access.
+
+This option needs no installer or administrator permission. Keep the entire extracted folder together.
+
+### Build and Check the Installer (developer)
+From the project directory, run `npm ci`, then `npm run package:win:portable` to create the no-admin install archive at `release/KitabuPOS-Windows-x64-Install.zip`. To build the conventional NSIS setup executable, run `npm run build:win`; packaging may require internet access the first time to fetch Electron Builder's Windows resources. Run `npm test`, `npm run lint`, and `npm run smoke` before distributing either package.
 
 ---
 
