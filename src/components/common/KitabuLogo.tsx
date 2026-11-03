@@ -4,140 +4,108 @@ export interface KitabuLogoProps {
   size?: number;
   className?: string;
   variant?: 'mark' | 'horizontal' | 'badge';
-  colorMode?: 'teal' | 'white' | 'black';
+  colorMode?: 'shuka' | 'teal' | 'white' | 'black';
 }
 
 export const KitabuLogo: React.FC<KitabuLogoProps> = ({
   size = 28,
   className = '',
   variant = 'mark',
-  colorMode = 'teal',
+  colorMode = 'shuka',
 }) => {
-  const PRIMARY_TEAL = '#0F4C5C';
-  const ACCENT_TEAL = '#1A9A8E';
-  const TASSEL_GOLD = '#F2E8C6';
-  const TEXT_DARK = '#121F33';
+  // Master Shuka Cover Palette
+  const COLOR_BG_RED = '#791F1F';
+  const COLOR_COVER_BLUE = '#185FA5';
+  const COLOR_SPINE_NAVY = '#042C53';
+  const COLOR_STRIPE_RED = '#E24B4A';
+  const COLOR_STRIPE_CREAM = '#FAEEDA';
+  const COLOR_STRIPE_GOLD = '#EF9F27';
 
-  let b1Color = PRIMARY_TEAL;
-  let b2Color = PRIMARY_TEAL;
-  let b3Color = ACCENT_TEAL;
-  let b4Color = PRIMARY_TEAL;
-  let tasselColor = TASSEL_GOLD;
-  let pagesColor = '#FFFFFF';
-
+  // 1-Bit Thermal Receipt / Single-Color Monochrome Mark (black on white)
   if (colorMode === 'black') {
-    b1Color = '#121F33';
-    b2Color = '#121F33';
-    b3Color = '#121F33';
-    b4Color = '#121F33';
-    tasselColor = '#121F33';
-    pagesColor = '#FFFFFF';
-  } else if (colorMode === 'white') {
-    b1Color = '#FFFFFF';
-    b2Color = '#FFFFFF';
-    b3Color = '#FFFFFF';
-    b4Color = '#FFFFFF';
-    tasselColor = TASSEL_GOLD;
-    pagesColor = '#0F4C5C';
+    const receiptSvg = (
+      <svg
+        viewBox="0 0 120 120"
+        width={size}
+        height={size}
+        xmlns="http://www.w3.org/2000/svg"
+        className={className}
+        aria-label="KitabuPOS Thermal Receipt Logo"
+      >
+        <rect width="120" height="120" fill="#FFFFFF" />
+        {/* Book outline */}
+        <rect x="28" y="18" width="64" height="84" rx="6" fill="#FFFFFF" stroke="#000000" strokeWidth="4.5" />
+        {/* Spine */}
+        <rect x="28" y="18" width="12" height="84" rx="4" fill="#000000" />
+        {/* Horizontal stripes */}
+        <rect x="40" y="36" width="52" height="6" fill="#000000" />
+        <rect x="40" y="52" width="52" height="10" fill="#000000" />
+        <rect x="40" y="72" width="52" height="6" fill="#000000" />
+        {/* Vertical stripes with clean spacing */}
+        <rect x="49" y="18" width="5" height="16" fill="#000000" />
+        <rect x="49" y="44" width="5" height="6" fill="#000000" />
+        <rect x="49" y="64" width="5" height="6" fill="#000000" />
+        <rect x="49" y="80" width="5" height="22" fill="#000000" />
+
+        <rect x="71" y="18" width="8" height="16" fill="#000000" />
+        <rect x="71" y="44" width="8" height="6" fill="#000000" />
+        <rect x="71" y="64" width="8" height="6" fill="#000000" />
+        <rect x="71" y="80" width="8" height="22" fill="#000000" />
+      </svg>
+    );
+    return receiptSvg;
   }
 
-  const markSvg = (
+  // Master Shuka Book SVG (Book only on transparent canvas)
+  const shukaBookSvg = (
     <svg
-      viewBox="0 0 512 512"
+      viewBox="0 0 120 120"
       width={size}
       height={size}
-      fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
-      aria-label="KitabuPOS Logo"
+      aria-label="KitabuPOS Shuka Cover Logo"
     >
-      <g id="kitabu-k-mark">
-        {/* Book 1: Top vertical spine of K */}
-        <g id="book-1">
-          <rect x="144" y="96" width="56" height="150" rx="8" fill={b1Color} />
-          <rect x="188" y="102" width="6" height="138" rx="2" fill={pagesColor} fillOpacity="0.4" />
-          <path
-            d="M144 116 C124 122, 118 136, 122 152"
-            stroke={tasselColor}
-            strokeWidth="4.5"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <circle cx="122" cy="152" r="4.5" fill={tasselColor} />
-        </g>
-
-        {/* Book 2: Bottom vertical spine of K */}
-        <g id="book-2">
-          <rect x="144" y="266" width="56" height="150" rx="8" fill={b2Color} />
-          <rect x="188" y="272" width="6" height="138" rx="2" fill={pagesColor} fillOpacity="0.4" />
-          <path
-            d="M144 380 C124 374, 118 360, 122 344"
-            stroke={tasselColor}
-            strokeWidth="4.5"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <circle cx="122" cy="344" r="4.5" fill={tasselColor} />
-        </g>
-
-        {/* Book 3: Upper diagonal stroke of K */}
-        <g id="book-3" transform="translate(196, 240) rotate(-40)">
-          <rect x="0" y="-28" width="186" height="56" rx="8" fill={b3Color} />
-          <rect x="8" y="18" width="170" height="6" rx="2" fill={pagesColor} fillOpacity="0.4" />
-          <path
-            d="M186 0 C206 -4, 214 -16, 210 -30"
-            stroke={tasselColor}
-            strokeWidth="4.5"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <circle cx="210" cy="-30" r="4.5" fill={tasselColor} />
-        </g>
-
-        {/* Book 4: Lower diagonal stroke of K */}
-        <g id="book-4" transform="translate(202, 272) rotate(40)">
-          <rect x="0" y="-28" width="186" height="56" rx="8" fill={b4Color} />
-          <rect x="8" y="-24" width="170" height="6" rx="2" fill={pagesColor} fillOpacity="0.4" />
-          <path
-            d="M186 0 C206 4, 214 16, 210 30"
-            stroke={tasselColor}
-            strokeWidth="4.5"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <circle cx="210" cy="30" r="4.5" fill={tasselColor} />
-        </g>
-      </g>
+      <rect x="28" y="18" width="64" height="84" rx="5" fill={COLOR_COVER_BLUE} />
+      <rect x="28" y="36" width="64" height="6" fill={COLOR_STRIPE_CREAM} />
+      <rect x="28" y="52" width="64" height="10" fill={COLOR_STRIPE_RED} />
+      <rect x="28" y="72" width="64" height="6" fill={COLOR_STRIPE_GOLD} />
+      <rect x="48" y="18" width="5" height="84" fill={COLOR_STRIPE_CREAM} />
+      <rect x="70" y="18" width="8" height="84" fill={COLOR_STRIPE_RED} />
+      <rect x="28" y="18" width="10" height="84" rx="4" fill={COLOR_SPINE_NAVY} />
     </svg>
   );
 
   if (variant === 'badge') {
+    // Master Icon Badge with #791F1F background and rx=28
     return (
-      <div
-        style={{
-          width: size,
-          height: size,
-          backgroundColor: PRIMARY_TEAL,
-        }}
-        className={`rounded-xl flex items-center justify-center shrink-0 shadow-xs ${className}`}
+      <svg
+        viewBox="0 0 120 120"
+        width={size}
+        height={size}
+        xmlns="http://www.w3.org/2000/svg"
+        className={`shrink-0 ${className}`}
+        aria-label="KitabuPOS App Icon Badge"
       >
-        <KitabuLogo size={Math.round(size * 0.72)} colorMode="white" />
-      </div>
+        <rect width="120" height="120" rx="28" fill={COLOR_BG_RED} />
+        <rect x="28" y="18" width="64" height="84" rx="5" fill={COLOR_COVER_BLUE} />
+        <rect x="28" y="36" width="64" height="6" fill={COLOR_STRIPE_CREAM} />
+        <rect x="28" y="52" width="64" height="10" fill={COLOR_STRIPE_RED} />
+        <rect x="28" y="72" width="64" height="6" fill={COLOR_STRIPE_GOLD} />
+        <rect x="48" y="18" width="5" height="84" fill={COLOR_STRIPE_CREAM} />
+        <rect x="70" y="18" width="8" height="84" fill={COLOR_STRIPE_RED} />
+        <rect x="28" y="18" width="10" height="84" rx="4" fill={COLOR_SPINE_NAVY} />
+      </svg>
     );
   }
 
   if (variant === 'horizontal') {
     return (
       <div className={`inline-flex items-center gap-3 select-none ${className}`}>
-        <div
-          style={{ width: size, height: size, backgroundColor: PRIMARY_TEAL }}
-          className="rounded-xl flex items-center justify-center shrink-0 shadow-xs"
-        >
-          <KitabuLogo size={Math.round(size * 0.72)} colorMode="white" />
-        </div>
+        <KitabuLogo variant="badge" size={size} />
         <div className="flex flex-col text-left">
           <div className="font-extrabold tracking-tight leading-none text-neutral-900 text-lg">
-            Kitabu<span style={{ color: ACCENT_TEAL }}>POS</span>
+            Kitabu<span className="text-[#185FA5]">POS</span>
           </div>
           <span className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase mt-0.5">
             Bookshop Management
@@ -147,5 +115,5 @@ export const KitabuLogo: React.FC<KitabuLogoProps> = ({
     );
   }
 
-  return markSvg;
+  return shukaBookSvg;
 };

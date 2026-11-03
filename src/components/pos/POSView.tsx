@@ -28,6 +28,7 @@ import { formatKES } from '../../utils/formatters.ts';
 import { processSale, getSaleById, checkMpesaReferenceUsed } from '../../db/database.ts';
 import { ReceiptModal } from './ReceiptModal.tsx';
 import { ShortcutCheatSheetModal } from './ShortcutCheatSheetModal.tsx';
+import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
 import { playScannerSuccessBeep, playScannerErrorBeep } from '../../utils/audio.ts';
 import { STRINGS } from '../../i18n/strings.ts';
 
@@ -82,6 +83,7 @@ export const POSView: React.FC<POSViewProps> = ({
     }
   });
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
+  const [cartToResume, setCartToResume] = useState<ParkedCart | null>(null);
 
   // Checkout modal state
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -320,8 +322,14 @@ export const POSView: React.FC<POSViewProps> = ({
           minute: '2-digit',
         })})`;
 
-    const customLabel = window.prompt(STRINGS.pos.holdCartPrompt, defaultLabel);
-    if (customLabel === null) return; // User canceled
+    let customLabel: string | null = null;
+    try {
+      customLabel = window.prompt(STRINGS.pos.holdCartPrompt, defaultLabel);
+      if (customLabel === null) return; // User explicitly canceled
+    } catch {
+      // In sandbox/iframe where window.prompt is restricted, use defaultLabel
+      customLabel = defaultLabel;
+    }
 
     const newParked: ParkedCart = {
       id: `parked_${Date.now()}`,
@@ -337,22 +345,25 @@ export const POSView: React.FC<POSViewProps> = ({
     toast.success(`Cart "${newParked.label}" parked.`);
   };
 
-  // Resume Parked Cart
-  const handleResumeCart = (parked: ParkedCart) => {
-    if (cart.length > 0) {
-      const confirmSwitch = window.confirm(
-        'Current active cart will be replaced by the parked cart. Do you want to proceed?'
-      );
-      if (!confirmSwitch) return;
-    }
-
+  // Apply Resume Parked Cart
+  const applyResumeCart = (parked: ParkedCart) => {
     setCart(parked.items);
     setCustomerName(parked.customerName);
     setCartDiscount(parked.cartDiscount);
     setParkedCarts(parkedCarts.filter((p) => p.id !== parked.id));
     setIsResumeModalOpen(false);
+    setCartToResume(null);
     toast.success(`Resumed cart "${parked.label}"`);
     focusSearchInput();
+  };
+
+  // Resume Parked Cart with confirmation if current cart has items
+  const handleResumeCart = (parked: ParkedCart) => {
+    if (cart.length > 0) {
+      setCartToResume(parked);
+      return;
+    }
+    applyResumeCart(parked);
   };
 
   // Open checkout modal
@@ -1393,6 +1404,21 @@ export const POSView: React.FC<POSViewProps> = ({
           setIsCheatSheetOpen(false);
           focusSearchInput();
         }}
+      />
+
+      {/* Confirm Resume Cart Dialog (replaces window.confirm) */}
+      <ConfirmDialog
+        isOpen={Boolean(cartToResume)}
+        onClose={() => setCartToResume(null)}
+        onConfirm={() => {
+          if (cartToResume) {
+            applyResumeCart(cartToResume);
+          }
+        }}
+        title="Replace Active Cart?"
+        message={`Your current active cart contains ${cart.length} item(s). Resuming "${cartToResume?.label || 'parked cart'}" will replace your current items. Do you want to proceed?`}
+        confirmLabel="Resume Cart"
+        variant="warning"
       />
     </div>
   );

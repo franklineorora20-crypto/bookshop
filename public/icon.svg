@@ -1,45 +1,10 @@
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="1024" height="1024">
-  <rect width="512" height="512" rx="112" fill="#0F4C5C" />
-  <g transform="translate(4, 0)">
-    
-    <g id="kitabu-k-mark">
-      <!-- Book 1: Top vertical spine of K -->
-      <g id="book-1">
-        <rect x="144" y="96" width="56" height="150" rx="8" fill="#FFFFFF" />
-        <rect x="188" y="102" width="6" height="138" rx="2" fill="#0F4C5C" fill-opacity="0.4" />
-        <!-- Tassel 1 -->
-        <path d="M144 116 C124 122, 118 136, 122 152" stroke="#F2E8C6" stroke-width="4.5" stroke-linecap="round" fill="none" />
-        <circle cx="122" cy="152" r="4.5" fill="#F2E8C6" />
-      </g>
-
-      <!-- Book 2: Bottom vertical spine of K -->
-      <g id="book-2">
-        <rect x="144" y="266" width="56" height="150" rx="8" fill="#FFFFFF" />
-        <rect x="188" y="272" width="6" height="138" rx="2" fill="#0F4C5C" fill-opacity="0.4" />
-        <!-- Tassel 2 -->
-        <path d="M144 380 C124 374, 118 360, 122 344" stroke="#F2E8C6" stroke-width="4.5" stroke-linecap="round" fill="none" />
-        <circle cx="122" cy="344" r="4.5" fill="#F2E8C6" />
-      </g>
-
-      <!-- Book 3: Upper diagonal stroke of K -->
-      <g id="book-3" transform="translate(196, 240) rotate(-40)">
-        <rect x="0" y="-28" width="186" height="56" rx="8" fill="#FFFFFF" />
-        <rect x="8" y="18" width="170" height="6" rx="2" fill="#0F4C5C" fill-opacity="0.4" />
-        <!-- Tassel 3 -->
-        <path d="M186 0 C206 -4, 214 -16, 210 -30" stroke="#F2E8C6" stroke-width="4.5" stroke-linecap="round" fill="none" />
-        <circle cx="210" cy="-30" r="4.5" fill="#F2E8C6" />
-      </g>
-
-      <!-- Book 4: Lower diagonal stroke of K -->
-      <g id="book-4" transform="translate(202, 272) rotate(40)">
-        <rect x="0" y="-28" width="186" height="56" rx="8" fill="#FFFFFF" />
-        <rect x="8" y="-24" width="170" height="6" rx="2" fill="#0F4C5C" fill-opacity="0.4" />
-        <!-- Tassel 4 -->
-        <path d="M186 0 C206 4, 214 16, 210 30" stroke="#F2E8C6" stroke-width="4.5" stroke-linecap="round" fill="none" />
-        <circle cx="210" cy="30" r="4.5" fill="#F2E8C6" />
-      </g>
-    </g>
-  
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <rect width="120" height="120" rx="28" fill="#791F1F"/>
+  <rect x="28" y="18" width="64" height="84" rx="5" fill="#185FA5"/>
+  <rect x="28" y="36" width="64" height="6" fill="#FAEEDA"/>
+  <rect x="28" y="52" width="64" height="10" fill="#E24B4A"/>
+  <rect x="28" y="72" width="64" height="6" fill="#EF9F27"/>
+  <rect x="48" y="18" width="5" height="84" fill="#FAEEDA"/>
+  <rect x="70" y="18" width="8" height="84" fill="#E24B4A"/>
+  <rect x="28" y="18" width="10" height="84" rx="4" fill="#042C53"/>
 </svg>
