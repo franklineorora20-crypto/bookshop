@@ -89,6 +89,23 @@ A modern, fast, and reliable retail management system designed specifically for 
    npm run build
    ```
 
+6. **Package Windows Desktop Installer Bundle:**
+   ```bash
+   npm run package:win
+   ```
+   Generates the 1-click Windows Installer bundle (`Install-KitabuPOS.cmd`, `Install-KitabuPOS.ps1`, documentation) in `release/KitabuPOS-Windows-Installer`.
+
+---
+
+## 🪟 Windows Desktop Installer Deployment
+
+KitabuPOS is distributed as a native Windows 10 / 11 64-bit desktop application for bookshop till computers:
+- **1-Click User Installation**: Run `Install-KitabuPOS.cmd`. Deploys directly into `%LOCALAPPDATA%\Programs\KitabuPOS` without requiring Windows administrator credentials.
+- **Shortcuts & Start Menu**: Automatically adds a desktop shortcut ("KitabuPOS Bookshop System") and Start Menu entries.
+- **Data Protection**: Store records and automatic 14-day backups remain isolated in `%APPDATA%\KitabuPOS` and are never overwritten by software updates.
+- **Portable USB Mode**: Extract the portable archive and double-click `KitabuPOS.exe` to run immediately from any flash drive.
+- Detailed step-by-step instructions and hardware specifications are provided in [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md).
+
 ---
 
 ## 🛠️ Technology Architecture

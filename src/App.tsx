@@ -16,6 +16,7 @@ import { SettingsView } from './components/settings/SettingsView.tsx';
 import { LoginView } from './components/auth/LoginView.tsx';
 import { LockScreen } from './components/auth/LockScreen.tsx';
 import { ReceiptModal } from './components/pos/ReceiptModal.tsx';
+import { OfflineIndicator } from './components/common/OfflineIndicator.tsx';
 import { Toaster } from 'sonner';
 import { Book, Sale, ShopSettings, User } from './types/index.ts';
 import {
@@ -553,6 +554,9 @@ export default function App() {
           onLogout={handleLogout}
         />
       )}
+
+      {/* Offline Status Floating Pill */}
+      <OfflineIndicator />
 
       {/* Sonner Toast Notifications (Emil Kowalski Design) */}
       <Toaster position="bottom-right" richColors={false} closeButton theme="light" />

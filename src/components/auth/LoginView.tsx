@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { BookOpen, AlertCircle, ArrowRight, ArrowLeft, Copy, Eye, EyeOff, ShieldCheck, Lock, Clock } from 'lucide-react';
 import { KitabuLogo } from '../common/KitabuLogo.tsx';
+import { WindowsInstallButton } from '../common/WindowsInstallButton.tsx';
 import {
   loginWithPassword,
   isDefaultPassword,
@@ -384,6 +385,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onResetAnd
           </>
         )}
       </motion.div>
+
+      {/* Windows Desktop Setup Button for cashiers and store staff */}
+      <div className="mt-5 flex flex-col items-center gap-1.5 text-center">
+        <WindowsInstallButton variant="login" />
+        <p className="text-[11px] text-neutral-500 font-mono">
+          Windows 10 / 11 64-bit &bull; 100% Offline SQLite &bull; Zero network dependency
+        </p>
+      </div>
 
       {/* Mandatory Password Change Modal for Seeded Accounts */}
       <Modal

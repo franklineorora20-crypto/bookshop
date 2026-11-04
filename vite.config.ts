@@ -26,7 +26,7 @@ export default defineConfig(() => {
           short_name: 'KitabuPOS',
           description:
             'Offline-first bookshop management, point-of-sale, inventory, purchases, and financial reporting system for Kenyan bookshops.',
-          theme_color: '#0a0a0a',
+          theme_color: '#791F1F',
           background_color: '#ffffff',
           display: 'standalone',
           orientation: 'any',
@@ -56,9 +56,11 @@ export default defineConfig(() => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm,csv,woff,woff2}'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          navigateFallback: '/index.html',
+          cleanupOutdatedCaches: true,
         },
         devOptions: {
-          enabled: false,
+          enabled: true,
           type: 'module',
         },
       }),

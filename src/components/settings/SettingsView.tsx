@@ -51,6 +51,9 @@ import { KitabuLogo } from '../common/KitabuLogo.tsx';
 import { Modal } from '../common/Modal.tsx';
 import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
 import { StatusBadge } from '../common/StatusBadge.tsx';
+import { WindowsInstallerModal } from '../common/WindowsInstallerModal.tsx';
+import { WindowsIcon } from '../common/WindowsIcon.tsx';
+import { downloadWindowsInstallerCmd, downloadWindowsInstallerPs1 } from '../../utils/installer.ts';
 
 interface SettingsViewProps {
   settings: ShopSettings | null;
@@ -132,6 +135,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [auditSearch, setAuditSearch] = useState('');
+
+  // Windows Desktop Installation state
+  const [isWindowsInstallerOpen, setIsWindowsInstallerOpen] = useState(false);
 
   // Saving state
   const [isSaving, setIsSaving] = useState(false);
@@ -964,6 +970,87 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* TAB 5: PC Storage & Records */}
       {activeTab === 'maintenance' && (
         <div className="space-y-6 max-w-3xl">
+          {/* Card 0: Windows Desktop Application & Offline Deployment Hub */}
+          <div className="bg-gradient-to-br from-neutral-900 to-neutral-800 text-white p-6 rounded-xl border border-neutral-700 shadow-md space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center shrink-0">
+                  <WindowsIcon className="w-5 h-5 text-teal-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-base text-white">
+                      Windows Desktop Application & Offline Installer
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 text-xs font-mono font-medium border border-teal-500/40">
+                      WINDOWS 10 / 11 (64-BIT)
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
+                    KitabuPOS is built for native Windows desktop point-of-sale counter operations. Operates 100% offline with embedded SQLite storage and automated 14-day backup rotation. Zero internet or external database setup required.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs font-mono">
+              <div className="p-2.5 rounded-lg bg-neutral-950/60 border border-neutral-800">
+                <div className="text-neutral-400 text-[11px] mb-0.5">Platform Target</div>
+                <div className="text-teal-400 font-semibold flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
+                  Windows 10/11 x64
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-neutral-950/60 border border-neutral-800">
+                <div className="text-neutral-400 text-[11px] mb-0.5">Installation Mode</div>
+                <div className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  No Admin Rights Needed
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-neutral-950/60 border border-neutral-800">
+                <div className="text-neutral-400 text-[11px] mb-0.5">Database Storage</div>
+                <div className="text-neutral-200 font-semibold flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  Embedded SQLite WASM
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Button
+                variant="primary"
+                onClick={() => setIsWindowsInstallerOpen(true)}
+                className="bg-teal-600 hover:bg-teal-500 text-white border-none min-h-[40px] font-semibold"
+              >
+                <WindowsIcon className="w-4 h-4" />
+                <span>Open Windows Installer Hub</span>
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  downloadWindowsInstallerCmd();
+                  toast.success('Downloaded Install-KitabuPOS.cmd');
+                }}
+                className="bg-neutral-800 hover:bg-neutral-700 text-white border-neutral-700 min-h-[40px]"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Get Install-KitabuPOS.cmd</span>
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  downloadWindowsInstallerPs1();
+                  toast.success('Downloaded Install-KitabuPOS.ps1');
+                }}
+                className="bg-neutral-800 hover:bg-neutral-700 text-white border-neutral-700 min-h-[40px]"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Get Install-KitabuPOS.ps1</span>
+              </Button>
+            </div>
+          </div>
+
           {/* Card 1: Local PC Storage Status */}
           <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-4">
             <div className="flex items-start justify-between gap-4">
@@ -1186,6 +1273,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         variant="danger"
         onConfirm={handleConfirmRestore}
         onClose={() => setPendingRestoreFile(null)}
+      />
+
+      {/* Windows Desktop Installer & Requirements Modal */}
+      <WindowsInstallerModal
+        isOpen={isWindowsInstallerOpen}
+        onClose={() => setIsWindowsInstallerOpen(false)}
       />
 
     </div>

@@ -18,6 +18,7 @@
     "test": "node --test src/utils/calculations.test.ts src/utils/csv.test.ts src/db/database.test.ts src/db/hardening.test.ts src/db/recovery.test.ts",
     "clean": "node -e \"const fs=require('fs'); for (const p of ['dist','dist-electron','release']) fs.rmSync(p,{recursive:true,force:true})\"",
     "build:win": "npm run clean && npm run build && npm run build:electron && electron-builder --win nsis",
+    "package:win": "tsx scripts/package-win.ts",
     "package:win:portable": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/package-win-portable.ps1",
     "smoke:packaged": "tsx scripts/smoke-packaged.ts",
     "smoke": "tsx scripts/smoke-packaged.ts",

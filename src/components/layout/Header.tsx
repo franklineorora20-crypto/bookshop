@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Clock, Search, Menu } from 'lucide-react';
+import { WindowsInstallButton } from '../common/WindowsInstallButton.tsx';
 
 interface HeaderProps {
   title: string;
@@ -87,6 +88,9 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-[11px] font-medium text-neutral-700">{currentTime || 'Nairobi Time'}</span>
           <span className="text-[9px] font-mono text-neutral-400">EAT</span>
         </div>
+
+        {/* Windows Desktop Installer Button */}
+        <WindowsInstallButton variant="header" />
 
         {/* POS Fast Button - Emil Kowalski tactile button */}
         <button

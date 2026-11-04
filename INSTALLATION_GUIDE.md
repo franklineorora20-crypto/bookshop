@@ -41,8 +41,27 @@ To update an existing installation, close KitabuPOS and run the installer again 
 
 This option needs no installer or administrator permission. Keep the entire extracted folder together.
 
+### Method C: Enterprise Silent & Multi-Till Deployment (PowerShell & Batch)
+For academic institutions, multi-register bookstores, or school computer rooms:
+1. **Silent / Background Installation**:
+   ```cmd
+   Install-KitabuPOS.cmd -InstallDirectory "C:\KitabuPOS" -NoShortcuts
+   ```
+2. **Immediate Auto-Launch after Deployment**:
+   ```cmd
+   Install-KitabuPOS.cmd -Launch
+   ```
+3. **PowerShell Direct Execution**:
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-KitabuPOS.ps1 -InstallDirectory "$env:LOCALAPPDATA\Programs\KitabuPOS" -Launch
+   ```
+
 ### Build and Check the Installer (developer)
-From the project directory, run `npm ci`, then `npm run package:win:portable` to create the no-admin install archive at `release/KitabuPOS-Windows-x64-Install.zip`. To build the conventional NSIS setup executable, run `npm run build:win`; packaging may require internet access the first time to fetch Electron Builder's Windows resources. Run `npm test`, `npm run lint`, and `npm run smoke` before distributing either package.
+From the project directory:
+- Run `npm run package:win` to compile and stage the full Windows installer bundle at `release/KitabuPOS-Windows-Installer`.
+- Run `npm run package:win:portable` (on Windows systems with PowerShell) to build `release/KitabuPOS-Windows-x64-Install.zip`.
+- Run `npm run build:win` to generate the standard NSIS executable setup (`KitabuPOS-Setup-1.0.0.exe`).
+- Run `npm test`, `npm run lint`, and `npm run smoke` to verify all business rules, database integrity, and packaged runtime rendering before distribution.
 
 ---
 
