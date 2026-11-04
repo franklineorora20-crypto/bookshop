@@ -34,11 +34,10 @@ async function runSmokeTest() {
     throw new Error('SQLite WASM binary not found in dist/assets.');
   }
 
-  // 3. Verify Windows installer script presence
-  const cmdInstaller = path.join(rootDir, 'Install-KitabuPOS.cmd');
-  const ps1Installer = path.join(rootDir, 'Install-KitabuPOS.ps1');
-  if (!fs.existsSync(cmdInstaller) || !fs.existsSync(ps1Installer)) {
-    throw new Error('Windows installer scripts (Install-KitabuPOS.cmd / .ps1) are missing.');
+  // 3. Verify the source build script for the Windows installer is present
+  const installerBuildScript = path.join(rootDir, 'build-installer.ps1');
+  if (!fs.existsSync(installerBuildScript)) {
+    throw new Error('build-installer.ps1 is missing.');
   }
 
   // 4. Pre-flight check: Can Electron binary run in current environment?
@@ -53,7 +52,7 @@ async function runSmokeTest() {
     console.log('  - dist-electron/main.js: Verified (' + fs.statSync(mainJs).size + ' bytes)');
     console.log('  - dist-electron/preload.cjs: Verified (' + fs.statSync(preloadCjs).size + ' bytes)');
     console.log('  - SQLite WASM binary: Verified present in dist/assets');
-    console.log('  - Windows 1-Click Installer (CMD & PS1): Verified present');
+    console.log('  - Windows installer build script: Verified present');
     console.log('[Smoke] PASS: Packaged application assets and Electron processes verified successfully.');
     return;
   }

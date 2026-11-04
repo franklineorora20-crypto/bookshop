@@ -51,9 +51,7 @@ import { KitabuLogo } from '../common/KitabuLogo.tsx';
 import { Modal } from '../common/Modal.tsx';
 import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
 import { StatusBadge } from '../common/StatusBadge.tsx';
-import { WindowsInstallerModal } from '../common/WindowsInstallerModal.tsx';
 import { WindowsIcon } from '../common/WindowsIcon.tsx';
-import { downloadWindowsInstallerCmd, downloadWindowsInstallerPs1 } from '../../utils/installer.ts';
 
 interface SettingsViewProps {
   settings: ShopSettings | null;
@@ -135,9 +133,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [auditSearch, setAuditSearch] = useState('');
-
-  // Windows Desktop Installation state
-  const [isWindowsInstallerOpen, setIsWindowsInstallerOpen] = useState(false);
 
   // Saving state
   const [isSaving, setIsSaving] = useState(false);
@@ -1018,36 +1013,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
-              <Button
-                variant="primary"
-                onClick={() => setIsWindowsInstallerOpen(true)}
-                className="bg-teal-600 hover:bg-teal-500 text-white border-none min-h-[40px] font-semibold"
+              <a
+                href="https://github.com/franklineorora20-crypto/bookshop/releases/latest"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white min-h-[40px] font-semibold"
               >
                 <WindowsIcon className="w-4 h-4" />
-                <span>Open Windows Installer Hub</span>
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  downloadWindowsInstallerCmd();
-                  toast.success('Downloaded Install-KitabuPOS.cmd');
-                }}
-                className="bg-neutral-800 hover:bg-neutral-700 text-white border-neutral-700 min-h-[40px]"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Get Install-KitabuPOS.cmd</span>
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  downloadWindowsInstallerPs1();
-                  toast.success('Downloaded Install-KitabuPOS.ps1');
-                }}
-                className="bg-neutral-800 hover:bg-neutral-700 text-white border-neutral-700 min-h-[40px]"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Get Install-KitabuPOS.ps1</span>
-              </Button>
+                <span>Get Windows installer</span>
+              </a>
             </div>
           </div>
 
@@ -1273,12 +1247,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         variant="danger"
         onConfirm={handleConfirmRestore}
         onClose={() => setPendingRestoreFile(null)}
-      />
-
-      {/* Windows Desktop Installer & Requirements Modal */}
-      <WindowsInstallerModal
-        isOpen={isWindowsInstallerOpen}
-        onClose={() => setIsWindowsInstallerOpen(false)}
       />
 
     </div>
