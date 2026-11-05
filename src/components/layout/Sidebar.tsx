@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { KitabuLogo } from '../common/KitabuLogo.tsx';
-import { WindowsInstallButton } from '../common/WindowsInstallButton.tsx';
 import {
   BookOpen,
   LayoutDashboard,
@@ -270,13 +269,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* User Session Footer */}
         <div className="p-2.5 border-t border-neutral-800/80 bg-neutral-950 shrink-0">
-          <div className="mb-2">
-            <WindowsInstallButton
-              variant="sidebar"
-              collapsed={isCollapsed && !isMobileOpen}
-            />
-          </div>
-
           {(!isCollapsed || isMobileOpen) && (
             <div className="p-2 rounded-lg bg-neutral-900/70 border border-neutral-800/60 mb-2">
               <div className="flex items-center justify-between">
