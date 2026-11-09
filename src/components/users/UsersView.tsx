@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Plus, AlertCircle, UserCog, Eye, EyeOff, ShieldCheck, KeyRound } from 'lucide-react';
+import { Plus, AlertCircle, UserCog, Eye, EyeOff, ShieldCheck, KeyRound, Trash2 } from 'lucide-react';
 import bcrypt from 'bcryptjs';
 import type { User, UserRole } from '../../types/index.ts';
-import { getUsers, addUser, updateUser } from '../../db/database.ts';
+import { getUsers, addUser, updateUser, deleteUserPermanently } from '../../db/database.ts';
 import { formatDateTime } from '../../utils/formatters.ts';
 import { Button } from '../common/Button.tsx';
 import { Input } from '../common/Input.tsx';
@@ -33,6 +33,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
 
   // Toggle user active status confirmation
   const [targetToggleUser, setTargetToggleUser] = useState<User | null>(null);
+  const [targetDeleteUser, setTargetDeleteUser] = useState<User | null>(null);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -141,6 +142,23 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
     }
   };
 
+  const confirmDeleteUser = async () => {
+    if (!targetDeleteUser) return;
+    try {
+      await deleteUserPermanently(
+        targetDeleteUser.id,
+        currentUser?.id || 1,
+        currentUser?.full_name || 'Admin'
+      );
+      toast.success(`Account @${targetDeleteUser.username} permanently deleted`);
+      setTargetDeleteUser(null);
+      await loadUsers();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to permanently delete account');
+      throw err;
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Top Banner */}
@@ -208,7 +226,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-neutral-100 flex items-center justify-between text-xs">
+            <div className="pt-3 border-t border-neutral-100 flex flex-col gap-3 text-xs sm:flex-row sm:items-center sm:justify-between">
               <div>
                 {u.is_active === 1 ? (
                   <StatusBadge status="success" label="Active" />
@@ -218,14 +236,26 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
               </div>
 
               {u.id !== currentUser?.id && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setTargetToggleUser(u)}
-                  className="min-h-[36px]"
-                >
-                  {u.is_active === 1 ? 'Suspend Account' : 'Activate Account'}
-                </Button>
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setTargetToggleUser(u)}
+                    className="min-h-[36px]"
+                  >
+                    {u.is_active === 1 ? 'Suspend Account' : 'Activate Account'}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setTargetDeleteUser(u)}
+                    className="min-h-[36px]"
+                    title="Permanently delete account"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </Button>
+                </div>
               )}
             </div>
           </div>
@@ -362,6 +392,17 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
         variant={targetToggleUser?.is_active === 1 ? 'danger' : 'primary'}
         onConfirm={confirmToggleActive}
         onClose={() => setTargetToggleUser(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={!!targetDeleteUser}
+        title="Permanently Delete Staff Account"
+        message={`Permanently delete @${targetDeleteUser?.username} (${targetDeleteUser?.full_name})? This cannot be undone. Accounts with recorded sales, purchases, expenses, or stock activity cannot be deleted; suspend those accounts instead. Existing audit entries will be retained.`}
+        confirmLabel="Delete Permanently"
+        variant="danger"
+        requiredWord="DELETE USER"
+        onConfirm={confirmDeleteUser}
+        onClose={() => setTargetDeleteUser(null)}
       />
     </div>
   );

@@ -2464,6 +2464,68 @@ export async function updateUser(
   await logAudit(adminId, adminName || 'Admin', 'USER_UPDATE', 'user', id, `Updated user "${newUsername}".`);
 }
 
+export async function deleteUserPermanently(
+  id: number,
+  userOrIdOrRole: { role: UserRole; id?: number } | UserRole | number,
+  adminName?: string
+): Promise<void> {
+  await requirePermission(userOrIdOrRole, 'CAN_MANAGE_USERS');
+  const adminId = extractUserId(userOrIdOrRole, 1);
+  if (id === adminId) throw new Error('You cannot permanently delete your own account.');
+  if (id === 1) throw new Error('The primary administrator account cannot be deleted.');
+
+  const user = await runQueryOne<Pick<User, 'id' | 'username' | 'full_name' | 'role'>>(
+    'SELECT id, username, full_name, role FROM users WHERE id = ?;',
+    [id]
+  );
+  if (!user) throw new Error('User not found.');
+
+  if (user.role === 'admin') {
+    const activeAdmins = await runQueryOne<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1 AND id != ?;",
+      [id]
+    );
+    if (!activeAdmins || Number(activeAdmins.count) === 0) {
+      throw new Error('The last active administrator account cannot be deleted.');
+    }
+  }
+
+  const activity = await runQueryOne<{ count: number }>(
+    `SELECT
+       (SELECT COUNT(*) FROM sales WHERE user_id = ? OR voided_by_user_id = ?) +
+       (SELECT COUNT(*) FROM purchases WHERE user_id = ?) +
+       (SELECT COUNT(*) FROM expenses WHERE user_id = ?) +
+       (SELECT COUNT(*) FROM stock_movements WHERE user_id = ?) AS count;`,
+    [id, id, id, id, id]
+  );
+  if (Number(activity?.count || 0) > 0) {
+    throw new Error('This account has recorded business activity and cannot be permanently deleted. Suspend it instead to preserve transaction history.');
+  }
+
+  const db = await getDatabase();
+  db.run('PRAGMA foreign_keys = ON;');
+  db.run('BEGIN TRANSACTION;');
+  try {
+    db.run('UPDATE audit_logs SET user_id = NULL WHERE user_id = ?;', [id]);
+    db.run('DELETE FROM administrator_recovery WHERE admin_user_id = ?;', [id]);
+    db.run('DELETE FROM users WHERE id = ?;', [id]);
+    await logAudit(
+      adminId,
+      adminName || 'Admin',
+      'USER_DELETE',
+      'user',
+      id,
+      `Permanently deleted account "${user.username}" (${user.full_name}).`,
+      db
+    );
+    db.run('COMMIT;');
+    await persistDbToStorage(db);
+  } catch (error) {
+    safeRollback(db);
+    throw error;
+  }
+}
+
 // Shop Settings
 export async function getShopSettings(): Promise<ShopSettings> {
   const rows = await runQuery<{ key: string; value: string }>('SELECT key, value FROM shop_settings;');

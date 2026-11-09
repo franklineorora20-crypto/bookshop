@@ -9,6 +9,7 @@ import {
   migrateDatabase,
   verifyDatabaseBinary,
   updateUser,
+  deleteUserPermanently,
   addUser,
   getUsers,
   processSale,
@@ -43,6 +44,67 @@ import {
   recordFailedAttempt,
   resetLockout,
 } from '../services/auth.ts';
+
+test('permanent user deletion preserves audit history and refuses accounts with business activity', async () => {
+  __resetDatabaseStateForTests();
+  __setMockStorageForTests(new Map());
+  try {
+    const removableId = await addUser(
+      {
+        username: 'temporary-staff',
+        full_name: 'Temporary Staff',
+        role: 'cashier',
+        password_hash: bcrypt.hashSync('temporary-password', 10),
+        is_active: 1,
+      },
+      1,
+      'Shop Administrator'
+    );
+    await runExecute(
+      `INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, details, created_at)
+       VALUES (?, ?, 'TEST_ACTION', 'user', ?, 'Historical activity', ?);`,
+      [removableId, 'Temporary Staff', removableId, new Date().toISOString()]
+    );
+
+    await deleteUserPermanently(removableId, 1, 'Shop Administrator');
+
+    const deletedUser = await runQueryOne('SELECT id FROM users WHERE id = ?;', [removableId]);
+    assert.equal(deletedUser, null);
+    const retainedAudit = await runQueryOne<{ user_id: number | null; user_name: string }>(
+      "SELECT user_id, user_name FROM audit_logs WHERE action = 'TEST_ACTION' AND entity_id = ?;",
+      [String(removableId)]
+    );
+    assert.equal(retainedAudit?.user_id, null);
+    assert.equal(retainedAudit?.user_name, 'Temporary Staff');
+
+    const activeStaffId = await addUser(
+      {
+        username: 'active-staff',
+        full_name: 'Active Staff',
+        role: 'cashier',
+        password_hash: bcrypt.hashSync('active-password', 10),
+        is_active: 1,
+      },
+      1,
+      'Shop Administrator'
+    );
+    await runExecute(
+      `INSERT INTO sales (receipt_number, user_id, cashier_name, subtotal, discount_total, tax_total,
+        grand_total, total_paid, change_amount, payment_method, is_voided, created_at)
+       VALUES (?, ?, ?, 100, 0, 0, 100, 100, 0, 'cash', 0, ?);`,
+      ['TEST-DELETE-USER', activeStaffId, 'Active Staff', new Date().toISOString()]
+    );
+    await assert.rejects(
+      deleteUserPermanently(activeStaffId, 1, 'Shop Administrator'),
+      /recorded business activity/i
+    );
+    const retainedUser = await runQueryOne('SELECT id FROM users WHERE id = ?;', [activeStaffId]);
+    assert.ok(retainedUser);
+  } finally {
+    __resetDatabaseStateForTests();
+    __setMockStorageForTests(null);
+  }
+});
 
 test('A1 [TEST]: a v2 DB with a manager who made sales migrates with all users kept and PRAGMA foreign_key_check returning no rows', async () => {
   const SQL = await initSqlJs();
